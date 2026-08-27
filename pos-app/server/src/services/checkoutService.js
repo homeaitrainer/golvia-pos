@@ -1,0 +1,84 @@
+const { nextInvoiceNumber } = require('./invoiceNumbering');
+const { coinsEarnedForAmount, coinsToDiscountValue } = require('./coinEngine');
+const { calculateTier } = require('./tierEngine');
+
+function createInvoice(db, params, now = new Date()) {
+  const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod } = params;
+
+  const tx = db.transaction(() => {
+    // Validate stock
+    for (const item of items) {
+      const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = ?').get(item.variantId);
+      if (!variant || variant.quantity < item.quantity) {
+        throw new Error('INSUFFICIENT_STOCK');
+      }
+    }
+
+    let subtotal = 0;
+    let itemDiscountTotal = 0;
+    for (const item of items) {
+      subtotal += item.unitPrice * item.quantity;
+      itemDiscountTotal += item.itemDiscount || 0;
+    }
+
+    const afterItemDiscounts = subtotal - itemDiscountTotal;
+    let lumpSumAmount = 0;
+    if (lumpSumDiscount) {
+      lumpSumAmount = lumpSumDiscount.type === 'percent'
+        ? afterItemDiscounts * (lumpSumDiscount.value / 100)
+        : lumpSumDiscount.value;
+    }
+
+    let coinsRedeemed = 0;
+    let coinDiscountValue = 0;
+    if (coinsToRedeem && coinsToRedeem > 0) {
+      if (!customerId) throw new Error('INSUFFICIENT_COINS');
+      const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = ?').get(customerId);
+      if (!account || account.current_coin_balance < coinsToRedeem) {
+        throw new Error('INSUFFICIENT_COINS');
+      }
+      coinsRedeemed = coinsToRedeem;
+      coinDiscountValue = coinsToDiscountValue(coinsRedeemed);
+    }
+
+    const discountTotal = itemDiscountTotal + lumpSumAmount;
+    const total = subtotal - discountTotal - coinDiscountValue;
+    const coinsEarned = customerId ? coinsEarnedForAmount(subtotal) : 0;
+
+    const invoiceNumber = nextInvoiceNumber(db, now);
+    const insertInvoice = db.prepare(`
+      INSERT INTO invoices (invoice_number, customer_id, subtotal, discount_total, coins_redeemed, coins_earned, total, payment_method, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)
+    `);
+    const result = insertInvoice.run(
+      invoiceNumber, customerId, subtotal, discountTotal, coinsRedeemed, coinsEarned, total, paymentMethod, now.toISOString()
+    );
+    const invoiceId = result.lastInsertRowid;
+
+    const insertItem = db.prepare(`
+      INSERT INTO invoice_items (invoice_id, variant_id, quantity, unit_price, item_discount) VALUES (?, ?, ?, ?, ?)
+    `);
+    const decrementStock = db.prepare('UPDATE product_variants SET quantity = quantity - ? WHERE id = ?');
+    for (const item of items) {
+      insertItem.run(invoiceId, item.variantId, item.quantity, item.unitPrice, item.itemDiscount || 0);
+      decrementStock.run(item.quantity, item.variantId);
+    }
+
+    if (customerId) {
+      const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = ?').get(customerId);
+      const newLifetime = account.lifetime_coins + coinsEarned;
+      const newBalance = account.current_coin_balance - coinsRedeemed + coinsEarned;
+      const newTier = calculateTier(newLifetime);
+      db.prepare(`
+        UPDATE membership_accounts SET lifetime_coins = ?, current_coin_balance = ?, tier = ?, tier_updated_at = ?
+        WHERE customer_id = ?
+      `).run(newLifetime, newBalance, newTier, now.toISOString(), customerId);
+    }
+
+    return db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+  });
+
+  return tx();
+}
+
+module.exports = { createInvoice };
