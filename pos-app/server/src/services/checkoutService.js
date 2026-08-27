@@ -32,18 +32,24 @@ function createInvoice(db, params, now = new Date()) {
   let tierUpgrade = null;
 
   const tx = db.transaction(() => {
-    // Validate stock
+    // Validate stock and, in the same pass, fetch each variant's authoritative sell_price --
+    // the unit price used for subtotal, invoice_items.unit_price, and coin calculations below is
+    // ALWAYS this DB-fetched value, never the client-supplied item.unitPrice. Trusting a
+    // client-supplied price would let anyone invoice an item at whatever price they send.
+    const variantsById = new Map();
     for (const item of items) {
-      const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = ?').get(item.variantId);
+      const variant = db.prepare('SELECT quantity, sell_price FROM product_variants WHERE id = ?').get(item.variantId);
       if (!variant || variant.quantity < item.quantity) {
         throw new Error('INSUFFICIENT_STOCK');
       }
+      variantsById.set(item.variantId, variant);
     }
 
     let subtotal = 0;
     let itemDiscountTotal = 0;
     for (const item of items) {
-      subtotal += item.unitPrice * item.quantity;
+      const unitPrice = variantsById.get(item.variantId).sell_price;
+      subtotal += unitPrice * item.quantity;
       itemDiscountTotal += item.itemDiscount || 0;
     }
 
@@ -53,6 +59,10 @@ function createInvoice(db, params, now = new Date()) {
       lumpSumAmount = lumpSumDiscount.type === 'percent'
         ? afterItemDiscounts * (lumpSumDiscount.value / 100)
         : lumpSumDiscount.value;
+      // Cap the lump-sum discount so it can reduce the price to 0 but no further. This must
+      // happen BEFORE the coin-redemption cap below, so that cap (and the voucher cap after it)
+      // works off a sane, non-negative baseline instead of compounding an already-negative one.
+      lumpSumAmount = Math.min(lumpSumAmount, afterItemDiscounts);
     }
 
     // Coins can discount at most what's left after item + lump-sum discounts, so the total
@@ -93,10 +103,19 @@ function createInvoice(db, params, now = new Date()) {
 
       const remainingAfterCoins = Math.max(0, remainingAfterDiscounts - coinDiscountValue);
       voucherDiscountValue = Math.min(voucher.value, remainingAfterCoins);
+      // Nothing left for the voucher to discount (e.g. coin redemption already brought the
+      // total to 0) -- reject it instead of silently redeeming it for zero benefit. This check
+      // runs before the voucher is ever marked redeemed (below), so the customer keeps it.
+      if (voucherDiscountValue <= 0) throw new Error('INVALID_VOUCHER');
     }
 
     const discountTotal = itemDiscountTotal + lumpSumAmount + voucherDiscountValue;
-    const total = subtotal - discountTotal - coinDiscountValue;
+    // Defensive floor: the per-discount-type caps above (lump-sum capped at afterItemDiscounts,
+    // coins and voucher each capped at what's left) should make a negative total unreachable in
+    // normal operation, but this guards against any other edge case still producing one -- a
+    // negative total would flow into refundService.js as a negative refund_amount, i.e. money
+    // taken FROM the customer.
+    const total = Math.max(0, subtotal - discountTotal - coinDiscountValue);
     const coinsEarned = customerId ? coinsEarnedForAmount(subtotal) : 0;
 
     const invoiceNumber = nextInvoiceNumber(db, now);
@@ -114,7 +133,8 @@ function createInvoice(db, params, now = new Date()) {
     `);
     const decrementStock = db.prepare('UPDATE product_variants SET quantity = quantity - ? WHERE id = ?');
     for (const item of items) {
-      insertItem.run(invoiceId, item.variantId, item.quantity, item.unitPrice, item.itemDiscount || 0);
+      const unitPrice = variantsById.get(item.variantId).sell_price;
+      insertItem.run(invoiceId, item.variantId, item.quantity, unitPrice, item.itemDiscount || 0);
       decrementStock.run(item.quantity, item.variantId);
     }
 
@@ -133,7 +153,10 @@ function createInvoice(db, params, now = new Date()) {
     }
 
     if (voucher) {
-      db.prepare('UPDATE vouchers SET redeemed_at = ? WHERE id = ?').run(now.toISOString(), voucher.id);
+      // redeemed_invoice_id links this redemption back to the invoice that consumed it, so a
+      // full refund of this invoice (in refundService.js) can look the voucher up and restore it.
+      db.prepare('UPDATE vouchers SET redeemed_at = ?, redeemed_invoice_id = ? WHERE id = ?')
+        .run(now.toISOString(), invoiceId, voucher.id);
     }
 
     return db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);

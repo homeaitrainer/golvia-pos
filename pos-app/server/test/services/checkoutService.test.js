@@ -215,6 +215,87 @@ test('a voucher whose min_spend is not met by the cart throws INVALID_VOUCHER', 
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('server ignores a client-supplied unitPrice and always uses the DB sell_price for subtotal, invoice_items.unit_price, and coins', () => {
+  const { db, tmp } = setup();
+  // Variant 1's real sell_price (set up in setup()) is 300. The request lies and sends
+  // unitPrice: 1 -- the server must not trust it.
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 2, unitPrice: 1, itemDiscount: 0 }],
+    lumpSumDiscount: null,
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.subtotal, 600); // 300 * 2, NOT 1 * 2
+  assert.equal(invoice.total, 600);
+  assert.equal(invoice.coins_earned, 200); // floor(600/3), based on the real price
+
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+  assert.equal(invoiceItem.unit_price, 300); // NOT 1
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a lump-sum RM amount discount larger than the cart caps total at 0, not negative', () => {
+  const { db, tmp } = setup();
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: { type: 'amount', value: 500 }, // far more than the RM300 cart
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.discount_total, 300); // lump-sum capped at the cart value, not 500
+  assert.equal(invoice.total, 0); // capped at exactly 0, not negative
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a lump-sum percent discount over 100% caps total at 0, not negative', () => {
+  const { db, tmp } = setup();
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: { type: 'percent', value: 150 }, // 150% of 300 = 450
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.discount_total, 300); // capped at the cart value
+  assert.equal(invoice.total, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a voucher that would discount RM0 because coin redemption already zeroed the total throws INVALID_VOUCHER, and the voucher stays unredeemed', () => {
+  const { db, tmp } = setup();
+  db.prepare('UPDATE membership_accounts SET lifetime_coins = 40000, current_coin_balance = 40000, tier = ? WHERE customer_id = 1').run('Gold');
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at)
+    VALUES (1, 'monthly-tier', 5, 0, '2026-08-01T00:00:00', '2026-08-31T23:59:59')
+  `).run();
+  const voucherId = voucherResult.lastInsertRowid;
+
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+      lumpSumDiscount: null,
+      coinsToRedeem: 30000, // RM300 off -- the entire cart, leaving nothing for the voucher
+      paymentMethod: 'Cash',
+      voucherId,
+    }, new Date('2026-08-27'));
+  }, /INVALID_VOUCHER/);
+
+  const voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(voucherId);
+  assert.equal(voucher.redeemed_at, null); // never marked as used
+  assert.equal(voucher.redeemed_invoice_id, null);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('guest sale (no customerId) skips membership updates', () => {
   const { db, tmp } = setup();
   const invoice = createInvoice(db, {

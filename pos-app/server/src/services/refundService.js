@@ -116,6 +116,19 @@ function createRefund(db, params, now = new Date()) {
     const newStatus = totalRefundedQty >= totalOriginalQty ? 'refunded' : 'partially-refunded';
     db.prepare('UPDATE invoices SET status = ? WHERE id = ?').run(newStatus, invoiceId);
 
+    // Restore a redeemed voucher on a FULL refund only: a voucher is an all-or-nothing RM value
+    // (unlike coins, which are always reversed proportionally), and the customer received at
+    // least some benefit from a partially-refunded sale, so it stays consumed on a partial
+    // refund. redeemed_invoice_id links the voucher back to the invoice that redeemed it
+    // (set in checkoutService.js's createInvoice).
+    if (newStatus === 'refunded') {
+      const redeemedVoucher = db.prepare('SELECT id FROM vouchers WHERE redeemed_invoice_id = ?').get(invoiceId);
+      if (redeemedVoucher) {
+        db.prepare('UPDATE vouchers SET redeemed_at = NULL, redeemed_invoice_id = NULL WHERE id = ?')
+          .run(redeemedVoucher.id);
+      }
+    }
+
     return db.prepare('SELECT * FROM refunds WHERE id = ?').get(refundId);
   });
 

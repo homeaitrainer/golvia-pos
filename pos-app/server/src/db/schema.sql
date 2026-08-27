@@ -45,17 +45,6 @@ CREATE TABLE IF NOT EXISTS membership_accounts (
   tier_updated_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS vouchers (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  customer_id INTEGER NOT NULL REFERENCES customers(id),
-  type TEXT NOT NULL,
-  value REAL NOT NULL,
-  min_spend REAL NOT NULL DEFAULT 0,
-  issued_at TEXT NOT NULL,
-  expires_at TEXT,
-  redeemed_at TEXT
-);
-
 CREATE TABLE IF NOT EXISTS invoices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   invoice_number TEXT UNIQUE NOT NULL,
@@ -68,6 +57,24 @@ CREATE TABLE IF NOT EXISTS invoices (
   payment_method TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'completed',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- redeemed_invoice_id links a redeemed voucher to the specific invoice that consumed it, so a
+-- refund can look the voucher back up and restore it. Declared after `invoices` (rather than in
+-- its original position before `customers`/`membership_accounts`) since it now has a forward
+-- reference to invoices(id) -- SQLite allows the parent table to be created after the child only
+-- when foreign key enforcement isn't already active, and this schema's existing tables are all
+-- ordered so every REFERENCES target is defined earlier; this keeps that convention intact.
+CREATE TABLE IF NOT EXISTS vouchers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  type TEXT NOT NULL,
+  value REAL NOT NULL,
+  min_spend REAL NOT NULL DEFAULT 0,
+  issued_at TEXT NOT NULL,
+  expires_at TEXT,
+  redeemed_at TEXT,
+  redeemed_invoice_id INTEGER REFERENCES invoices(id)
 );
 
 CREATE TABLE IF NOT EXISTS invoice_items (

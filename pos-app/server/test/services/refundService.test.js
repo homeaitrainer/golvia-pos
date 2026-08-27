@@ -348,6 +348,78 @@ test('refunding with a missing/empty lines array throws INVALID_REFUND_LINES', (
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('a full refund of an invoice that redeemed a voucher restores the voucher (redeemed_at reset to NULL, usable again)', () => {
+  const { db, tmp } = setup();
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at)
+    VALUES (1, 'monthly-tier', 5, 0, '2026-08-01T00:00:00', '2026-08-31T23:59:59')
+  `).run();
+  const voucherId = voucherResult.lastInsertRowid;
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null,
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+    voucherId,
+  }, new Date('2026-08-27'));
+
+  let voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(voucherId);
+  assert.ok(voucher.redeemed_at); // confirmed used at checkout
+  assert.equal(voucher.redeemed_invoice_id, invoice.id);
+
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+  const refund = createRefund(db, {
+    invoiceId: invoice.id,
+    lines: [{ invoiceItemId: invoiceItem.id, quantity: 1 }], // full return
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-28'));
+
+  const updatedInvoice = db.prepare('SELECT status FROM invoices WHERE id = ?').get(invoice.id);
+  assert.equal(updatedInvoice.status, 'refunded');
+
+  voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(voucherId);
+  assert.equal(voucher.redeemed_at, null); // restored, usable again
+  assert.equal(voucher.redeemed_invoice_id, null);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a PARTIAL refund of an invoice that redeemed a voucher leaves the voucher still redeemed (all-or-nothing: only a full refund restores it)', () => {
+  const { db, tmp } = setup();
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at)
+    VALUES (1, 'monthly-tier', 5, 0, '2026-08-01T00:00:00', '2026-08-31T23:59:59')
+  `).run();
+  const voucherId = voucherResult.lastInsertRowid;
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 2, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null,
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+    voucherId,
+  }, new Date('2026-08-27'));
+
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+  createRefund(db, {
+    invoiceId: invoice.id,
+    lines: [{ invoiceItemId: invoiceItem.id, quantity: 1 }], // partial return (1 of 2)
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-28'));
+
+  const updatedInvoice = db.prepare('SELECT status FROM invoices WHERE id = ?').get(invoice.id);
+  assert.equal(updatedInvoice.status, 'partially-refunded');
+
+  const voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(voucherId);
+  assert.ok(voucher.redeemed_at); // still consumed -- not restored on a partial refund
+  assert.equal(voucher.redeemed_invoice_id, invoice.id);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('refunding a nonexistent invoiceItemId throws INVOICE_ITEM_NOT_FOUND instead of crashing', () => {
   const { db, tmp } = setup();
 
