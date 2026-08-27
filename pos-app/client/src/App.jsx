@@ -23,6 +23,14 @@ export default function App() {
   if (user === undefined) return <p>Loading...</p>;
   if (user === null) return <Login onLoggedIn={setUser} />;
 
+  async function handleLogout() {
+    try {
+      await apiClient.post('/auth/logout');
+    } finally {
+      setUser(null);
+    }
+  }
+
   return (
     <BrowserRouter>
       <div>
@@ -42,6 +50,8 @@ export default function App() {
           <Link to="/settings">Settings</Link>
           {' — '}
           <span>{user.username}</span>
+          {' '}
+          <button onClick={handleLogout}>Logout</button>
         </nav>
         <Routes>
           <Route path="/" element={<Checkout />} />
