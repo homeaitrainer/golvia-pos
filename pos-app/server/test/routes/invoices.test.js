@@ -46,6 +46,29 @@ test('checkout creates an invoice and refund reverses it', async () => {
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('invoice items survive product deletion', async () => {
+  const { agent, db, tmp } = await setup();
+
+  const checkout = await agent.post('/api/invoices').send({
+    customerId: null,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  });
+  assert.equal(checkout.status, 201);
+  const invoiceId = checkout.body.id;
+
+  const del = await agent.delete('/api/products/1');
+  assert.equal(del.status, 200);
+
+  const detail = await agent.get(`/api/invoices/${invoiceId}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.items.length, 1);
+  assert.equal(detail.body.items[0].product_name, 'Deleted product');
+  assert.equal(detail.body.items[0].variant_label, 'N/A');
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('checkout returns 409 on insufficient stock', async () => {
   const { agent, db, tmp } = await setup();
   const res = await agent.post('/api/invoices').send({

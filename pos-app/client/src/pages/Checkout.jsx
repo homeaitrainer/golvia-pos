@@ -2,6 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
 
+function refocusScanUnlessMovingToField(e, scanRef) {
+  const next = e.relatedTarget;
+  const isFormControl = next && ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(next.tagName);
+  if (!isFormControl) {
+    scanRef.current?.focus();
+  }
+}
+
 export default function Checkout() {
   const [search, setSearch] = useState('');
   const [scanInput, setScanInput] = useState('');
@@ -95,8 +103,9 @@ export default function Checkout() {
       <h2>Checkout</h2>
       <input ref={scanRef} placeholder="Scan barcode / SKU here" value={scanInput}
         onChange={e => setScanInput(e.target.value)} onKeyDown={handleScan}
-        onBlur={() => setTimeout(() => scanRef.current?.focus(), 300)} />
-      <input placeholder="Search products" value={search} onChange={e => runSearch(e.target.value)} />
+        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
+      <input placeholder="Search products" value={search} onChange={e => runSearch(e.target.value)}
+        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
       <ul>
         {results.map(p => (
           <li key={p.id}>
@@ -120,7 +129,8 @@ export default function Checkout() {
               <td>RM{i.unitPrice}</td>
               <td>
                 Discount RM <input type="number" value={i.itemDiscount}
-                  onChange={e => updateItemDiscount(i.variantId, e.target.value)} style={{ width: 60 }} />
+                  onChange={e => updateItemDiscount(i.variantId, e.target.value)}
+                  onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: 60 }} />
               </td>
               <td><button onClick={() => removeItem(i.variantId)}>Remove</button></td>
             </tr>
@@ -129,25 +139,30 @@ export default function Checkout() {
       </table>
 
       <h3>Customer</h3>
-      <input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)} />
+      <input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)}
+        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
       <button onClick={lookupCustomer}>Look up</button>
       {customer && <p>{customer.name} — {customer.membership.tier} tier, {customer.membership.current_coin_balance} coins</p>}
 
       <h3>Discounts</h3>
-      <select value={lumpSumType} onChange={e => setLumpSumType(e.target.value)}>
+      <select value={lumpSumType} onChange={e => setLumpSumType(e.target.value)}
+        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
         <option value="amount">RM amount</option>
         <option value="percent">%</option>
       </select>
-      <input type="number" value={lumpSumValue} onChange={e => setLumpSumValue(e.target.value)} />
+      <input type="number" value={lumpSumValue} onChange={e => setLumpSumValue(e.target.value)}
+        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
 
       {customer && (
         <div>
-          <label>Redeem coins: <input type="number" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)} /></label>
+          <label>Redeem coins: <input type="number" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} /></label>
         </div>
       )}
 
       <h3>Payment</h3>
-      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
         <option>Cash</option>
         <option>DuitNow/QR</option>
         <option>Bank Transfer</option>

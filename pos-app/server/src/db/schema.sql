@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE TABLE IF NOT EXISTS invoice_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   invoice_id INTEGER NOT NULL REFERENCES invoices(id),
-  variant_id INTEGER NOT NULL REFERENCES product_variants(id),
+  variant_id INTEGER REFERENCES product_variants(id) ON DELETE SET NULL,
   quantity INTEGER NOT NULL,
   unit_price REAL NOT NULL,
   item_discount REAL NOT NULL DEFAULT 0

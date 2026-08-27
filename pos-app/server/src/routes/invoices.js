@@ -35,10 +35,10 @@ function invoicesRouter(db) {
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     if (!invoice) return res.status(404).json({ error: 'NOT_FOUND' });
     const items = db.prepare(`
-      SELECT ii.*, p.name as product_name, pv.variant_label
+      SELECT ii.*, COALESCE(p.name, 'Deleted product') as product_name, COALESCE(pv.variant_label, 'N/A') as variant_label
       FROM invoice_items ii
-      JOIN product_variants pv ON pv.id = ii.variant_id
-      JOIN products p ON p.id = pv.product_id
+      LEFT JOIN product_variants pv ON pv.id = ii.variant_id
+      LEFT JOIN products p ON p.id = pv.product_id
       WHERE ii.invoice_id = ?
     `).all(req.params.id);
     const customer = invoice.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id) : null;
