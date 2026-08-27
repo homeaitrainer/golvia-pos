@@ -63,10 +63,26 @@ function productsRouter(db) {
   });
 
   router.put('/:id', (req, res) => {
-    const { name, category, description, brand, image_url } = req.body;
-    db.prepare(`
-      UPDATE products SET name = ?, category = ?, description = ?, brand = ?, image_url = ? WHERE id = ?
-    `).run(name, category, description, brand, image_url, req.params.id);
+    const { name, category, description, brand, image_url, variants } = req.body;
+    const tx = db.transaction(() => {
+      db.prepare(`
+        UPDATE products SET name = ?, category = ?, description = ?, brand = ?, image_url = ? WHERE id = ?
+      `).run(name, category, description, brand, image_url, req.params.id);
+
+      // Variant price/cost edits only -- quantity is intentionally excluded here so the
+      // audited adjust-stock endpoint below remains the sole path for quantity changes.
+      // Binding both id AND product_id prevents this from touching a variant belonging to
+      // a different product.
+      if (Array.isArray(variants)) {
+        const updateVariant = db.prepare(`
+          UPDATE product_variants SET cost_price = ?, sell_price = ? WHERE id = ? AND product_id = ?
+        `);
+        for (const v of variants) {
+          updateVariant.run(v.cost_price, v.sell_price, v.id, req.params.id);
+        }
+      }
+    });
+    tx();
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
     res.json(withVariants(product));
   });
@@ -82,7 +98,13 @@ function productsRouter(db) {
     if (!reason || !reason.trim()) {
       return res.status(400).json({ error: 'REASON_REQUIRED' });
     }
-    db.prepare('UPDATE product_variants SET quantity = quantity + ? WHERE id = ?').run(delta, req.params.variantId);
+    const tx = db.transaction(() => {
+      db.prepare('UPDATE product_variants SET quantity = quantity + ? WHERE id = ?').run(delta, req.params.variantId);
+      db.prepare(`
+        INSERT INTO stock_adjustments (variant_id, delta, reason) VALUES (?, ?, ?)
+      `).run(req.params.variantId, delta, reason);
+    });
+    tx();
     const variant = db.prepare('SELECT * FROM product_variants WHERE id = ?').get(req.params.variantId);
     res.json(variant);
   });

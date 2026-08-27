@@ -68,3 +68,48 @@ test('search filters by name, category, or sku', async () => {
   assert.equal(res.body.length, 1);
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('PUT /products/:id with a variants array updates cost_price/sell_price but never quantity', async () => {
+  const { agent, db, tmp } = await setup();
+  const create = await agent.post('/api/products').send({
+    name: 'Bracelet', category: 'Bracelets', brand: 'GOLVIA',
+    variants: [{ variant_label: '25g', sku: 'BRAC-25', cost_price: 80, sell_price: 200, quantity: 6 }],
+  });
+  assert.equal(create.status, 201);
+  const productId = create.body.id;
+  const variantId = create.body.variants[0].id;
+
+  const update = await agent.put(`/api/products/${productId}`).send({
+    name: 'Bracelet', category: 'Bracelets', brand: 'GOLVIA', description: 'Updated',
+    variants: [{ id: variantId, cost_price: 90, sell_price: 250, quantity: 999 }],
+  });
+  assert.equal(update.status, 200);
+  const updatedVariant = update.body.variants.find(v => v.id === variantId);
+  assert.equal(updatedVariant.cost_price, 90);
+  assert.equal(updatedVariant.sell_price, 250);
+  // quantity must be untouched by this route even though the client sent 999 -- it is not a
+  // recognized field for this update path, and only adjust-stock may change quantity.
+  assert.equal(updatedVariant.quantity, 6);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('adjust-stock writes a stock_adjustments audit row with the correct variant_id/delta/reason', async () => {
+  const { agent, db, tmp } = await setup();
+  const create = await agent.post('/api/products').send({
+    name: 'Earrings', variants: [{ variant_label: '10g', sku: 'EAR-10', cost_price: 20, sell_price: 60, quantity: 5 }],
+  });
+  const variantId = create.body.variants[0].id;
+  const productId = create.body.id;
+
+  const res = await agent.post(`/api/products/${productId}/variants/${variantId}/adjust-stock`).send({ delta: -2, reason: 'Damaged in store' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.quantity, 3);
+
+  const rows = db.prepare('SELECT * FROM stock_adjustments WHERE variant_id = ?').all(variantId);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].delta, -2);
+  assert.equal(rows[0].reason, 'Damaged in store');
+
+  db.close(); fs.unlinkSync(tmp);
+});

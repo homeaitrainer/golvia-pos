@@ -21,7 +21,10 @@ export default function ProductForm() {
     if (isNew) {
       await apiClient.post('/products', { ...form, variants });
     } else {
-      await apiClient.put(`/products/${id}`, form);
+      await apiClient.put(`/products/${id}`, {
+        ...form,
+        variants: variants.map(v => ({ id: v.id, cost_price: v.cost_price, sell_price: v.sell_price })),
+      });
     }
     navigate('/products');
   }
@@ -53,7 +56,10 @@ export default function ProductForm() {
           <input placeholder="SKU" value={v.sku} onChange={e => updateVariant(idx, 'sku', e.target.value)} />
           <input placeholder="Cost" type="number" value={v.cost_price} onChange={e => updateVariant(idx, 'cost_price', Number(e.target.value))} />
           <input placeholder="Price" type="number" value={v.sell_price} onChange={e => updateVariant(idx, 'sell_price', Number(e.target.value))} />
-          <input placeholder="Qty" type="number" value={v.quantity} onChange={e => updateVariant(idx, 'quantity', Number(e.target.value))} />
+          <input placeholder="Qty" type="number" value={v.quantity} readOnly={!isNew}
+            title={!isNew ? 'Use Adjust stock to change quantity' : undefined}
+            onChange={e => isNew && updateVariant(idx, 'quantity', Number(e.target.value))} />
+          {!isNew && <span> (use Adjust stock to change quantity)</span>}
           {!isNew && v.id && <button onClick={() => adjustStock(v.id)}>Adjust stock</button>}
         </div>
       ))}
