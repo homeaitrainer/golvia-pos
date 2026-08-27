@@ -51,7 +51,15 @@ function invoicesRouter(db) {
       const refund = createRefund(db, { invoiceId: req.params.id, lines, paymentMethod });
       res.status(201).json(refund);
     } catch (err) {
-      if (err.message === 'INVOICE_NOT_FOUND') return res.status(404).json({ error: err.message });
+      if (err.message === 'INVOICE_NOT_FOUND' || err.message === 'INVOICE_ITEM_NOT_FOUND') {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message === 'INVALID_REFUND_LINES') {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.message === 'REFUND_QUANTITY_EXCEEDS_REMAINING') {
+        return res.status(409).json({ error: err.message });
+      }
       throw err;
     }
   });

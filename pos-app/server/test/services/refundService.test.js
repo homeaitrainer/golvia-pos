@@ -232,3 +232,138 @@ test('refunding an invoice with coin redemption returns the redeemed coins to cu
 
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('refunding an invoiceItemId that belongs to a DIFFERENT invoice throws INVOICE_ITEM_NOT_FOUND', () => {
+  const { db, tmp } = setup();
+
+  const invoiceA = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+  const invoiceB = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  const itemFromInvoiceB = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoiceB.id);
+
+  // Attempt to refund invoice A using an invoice_item id that actually belongs to invoice B.
+  assert.throws(() => {
+    createRefund(db, {
+      invoiceId: invoiceA.id,
+      lines: [{ invoiceItemId: itemFromInvoiceB.id, quantity: 1 }],
+      paymentMethod: 'Cash',
+    }, new Date('2026-08-28'));
+  }, /INVOICE_ITEM_NOT_FOUND/);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('refunding the same line twice, where the second refund exceeds what remains, throws REFUND_QUANTITY_EXCEEDS_REMAINING', () => {
+  const { db, tmp } = setup();
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 2, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+
+  // First refund takes both units.
+  createRefund(db, {
+    invoiceId: invoice.id,
+    lines: [{ invoiceItemId: invoiceItem.id, quantity: 2 }],
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-28'));
+
+  // Nothing is left to refund; requesting 1 more must be rejected.
+  assert.throws(() => {
+    createRefund(db, {
+      invoiceId: invoice.id,
+      lines: [{ invoiceItemId: invoiceItem.id, quantity: 1 }],
+      paymentMethod: 'Cash',
+    }, new Date('2026-08-29'));
+  }, /REFUND_QUANTITY_EXCEEDS_REMAINING/);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a valid partial refund followed by a second valid partial refund for the remaining quantity succeeds and marks the invoice fully refunded', () => {
+  const { db, tmp } = setup();
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 2, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+
+  const firstRefund = createRefund(db, {
+    invoiceId: invoice.id,
+    lines: [{ invoiceItemId: invoiceItem.id, quantity: 1 }],
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-28'));
+  assert.equal(firstRefund.refund_amount, 300);
+
+  let afterFirst = db.prepare('SELECT status FROM invoices WHERE id = ?').get(invoice.id);
+  assert.equal(afterFirst.status, 'partially-refunded');
+
+  // Second refund for exactly the remaining quantity (1) must succeed, not be blocked by the
+  // first refund's already-refunded quantity.
+  const secondRefund = createRefund(db, {
+    invoiceId: invoice.id,
+    lines: [{ invoiceItemId: invoiceItem.id, quantity: 1 }],
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-29'));
+  assert.equal(secondRefund.refund_amount, 300);
+
+  const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = 1').get();
+  assert.equal(variant.quantity, 5); // fully restocked across both refunds
+
+  const finalInvoice = db.prepare('SELECT status FROM invoices WHERE id = ?').get(invoice.id);
+  assert.equal(finalInvoice.status, 'refunded');
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('refunding with a missing/empty lines array throws INVALID_REFUND_LINES', () => {
+  const { db, tmp } = setup();
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.throws(() => {
+    createRefund(db, { invoiceId: invoice.id, lines: [], paymentMethod: 'Cash' }, new Date('2026-08-28'));
+  }, /INVALID_REFUND_LINES/);
+
+  assert.throws(() => {
+    createRefund(db, { invoiceId: invoice.id, lines: undefined, paymentMethod: 'Cash' }, new Date('2026-08-28'));
+  }, /INVALID_REFUND_LINES/);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('refunding a nonexistent invoiceItemId throws INVOICE_ITEM_NOT_FOUND instead of crashing', () => {
+  const { db, tmp } = setup();
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.throws(() => {
+    createRefund(db, {
+      invoiceId: invoice.id,
+      lines: [{ invoiceItemId: 999999, quantity: 1 }],
+      paymentMethod: 'Cash',
+    }, new Date('2026-08-28'));
+  }, /INVOICE_ITEM_NOT_FOUND/);
+
+  db.close(); fs.unlinkSync(tmp);
+});

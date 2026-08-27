@@ -80,3 +80,30 @@ test('checkout returns 409 on insufficient stock', async () => {
   assert.equal(res.body.error, 'INSUFFICIENT_STOCK');
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('refund with an empty/missing lines array returns 400, not a 500 crash', async () => {
+  const { agent, db, tmp } = await setup();
+
+  const checkout = await agent.post('/api/invoices').send({
+    customerId: null,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  });
+  assert.equal(checkout.status, 201);
+  const invoiceId = checkout.body.id;
+
+  const emptyLines = await agent.post(`/api/invoices/${invoiceId}/refund`).send({
+    lines: [],
+    paymentMethod: 'Cash',
+  });
+  assert.equal(emptyLines.status, 400);
+  assert.equal(emptyLines.body.error, 'INVALID_REFUND_LINES');
+
+  const missingLines = await agent.post(`/api/invoices/${invoiceId}/refund`).send({
+    paymentMethod: 'Cash',
+  });
+  assert.equal(missingLines.status, 400);
+  assert.equal(missingLines.body.error, 'INVALID_REFUND_LINES');
+
+  db.close(); fs.unlinkSync(tmp);
+});

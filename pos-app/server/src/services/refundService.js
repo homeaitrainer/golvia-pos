@@ -7,6 +7,38 @@ function createRefund(db, params, now = new Date()) {
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
     if (!invoice) throw new Error('INVOICE_NOT_FOUND');
 
+    if (!Array.isArray(lines) || lines.length === 0) throw new Error('INVALID_REFUND_LINES');
+
+    // Validate every line BEFORE any writes (mirrors checkoutService.js's
+    // stock-validation-before-writes structure): the invoice_item must belong to THIS invoice
+    // (scoping the lookup by invoice_id prevents refunding against another invoice/customer's
+    // item), and the requested quantity must be a positive integer that doesn't exceed what's
+    // still refundable -- original quantity minus quantity already refunded in prior refunds,
+    // minus quantity claimed by any earlier line in this same request (so a single request
+    // can't double-claim the same invoice_item either).
+    const remainingByItemId = new Map();
+    const invoiceItemsByLine = [];
+    for (const line of lines) {
+      const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE id = ? AND invoice_id = ?')
+        .get(line && line.invoiceItemId, invoiceId);
+      if (!invoiceItem) throw new Error('INVOICE_ITEM_NOT_FOUND');
+
+      if (!Number.isInteger(line.quantity) || line.quantity <= 0) throw new Error('INVALID_REFUND_LINES');
+
+      if (!remainingByItemId.has(invoiceItem.id)) {
+        const alreadyRefunded = db.prepare(`
+          SELECT COALESCE(SUM(quantity), 0) as total FROM refund_items WHERE invoice_item_id = ?
+        `).get(invoiceItem.id).total;
+        remainingByItemId.set(invoiceItem.id, invoiceItem.quantity - alreadyRefunded);
+      }
+
+      const remaining = remainingByItemId.get(invoiceItem.id);
+      if (line.quantity > remaining) throw new Error('REFUND_QUANTITY_EXCEEDS_REMAINING');
+      remainingByItemId.set(invoiceItem.id, remaining - line.quantity);
+
+      invoiceItemsByLine.push(invoiceItem);
+    }
+
     // Value-based proration: each line's share of the invoice's line-value total (unit_price *
     // quantity - item_discount, i.e. value after its OWN item discount, before lump-sum/coins)
     // determines its share of invoice.total -- which already has the lump-sum discount and coin
@@ -32,18 +64,18 @@ function createRefund(db, params, now = new Date()) {
     `);
     const restockVariant = db.prepare('UPDATE product_variants SET quantity = quantity + ? WHERE id = ?');
 
-    for (const line of lines) {
-      const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE id = ?').get(line.invoiceItemId);
+    lines.forEach((line, idx) => {
+      const invoiceItem = invoiceItemsByLine[idx];
       // Prorate this invoice_item's item_discount by the fraction of its quantity being
       // returned (reduces to the full item_discount when the whole line is returned).
       const lineDiscountShare = invoiceItem.item_discount * (line.quantity / invoiceItem.quantity);
       returnedLineValue += invoiceItem.unit_price * line.quantity - lineDiscountShare;
 
-      insertRefundItem.run(refundId, line.invoiceItemId, line.quantity);
+      insertRefundItem.run(refundId, invoiceItem.id, line.quantity);
       if (invoiceItem.variant_id != null) {
         restockVariant.run(line.quantity, invoiceItem.variant_id);
       }
-    }
+    });
 
     const valueRatio = invoiceLineValueTotal > 0 ? returnedLineValue / invoiceLineValueTotal : 0;
     // Prorating the actual amount collected (invoice.total, which already reflects the
