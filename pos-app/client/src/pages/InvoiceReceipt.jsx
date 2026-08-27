@@ -8,6 +8,11 @@ const REFUND_ERROR_MESSAGES = {
   REFUND_QUANTITY_EXCEEDS_REMAINING: 'The return quantity exceeds what is still refundable for one or more items.',
 };
 
+const EMAIL_RECEIPT_ERROR_MESSAGES = {
+  NO_CUSTOMER_EMAIL: 'This customer has no email on file.',
+  EMAIL_SEND_FAILED: 'Failed to send the receipt email. Please try again.',
+};
+
 export default function InvoiceReceipt() {
   const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
@@ -15,6 +20,8 @@ export default function InvoiceReceipt() {
   const [refundPaymentMethod, setRefundPaymentMethod] = useState('Cash');
   const [refundError, setRefundError] = useState('');
   const [processingRefund, setProcessingRefund] = useState(false);
+  const [emailStatus, setEmailStatus] = useState(null); // { type: 'success' | 'error', text }
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   function loadInvoice() {
     return apiClient.get(`/invoices/${id}`).then(inv => {
@@ -32,6 +39,22 @@ export default function InvoiceReceipt() {
     if (Number.isNaN(qty) || qty < 0) qty = 0;
     if (qty > max) qty = max;
     setReturnQuantities(prev => ({ ...prev, [itemId]: qty }));
+  }
+
+  async function emailReceipt() {
+    setEmailStatus(null);
+    setSendingEmail(true);
+    try {
+      await apiClient.post(`/invoices/${id}/email-receipt`);
+      setEmailStatus({ type: 'success', text: 'Receipt emailed to customer.' });
+    } catch (err) {
+      setEmailStatus({
+        type: 'error',
+        text: EMAIL_RECEIPT_ERROR_MESSAGES[err.data?.error] || err.data?.error || 'Failed to email receipt.',
+      });
+    } finally {
+      setSendingEmail(false);
+    }
   }
 
   async function processReturn() {
@@ -81,6 +104,17 @@ export default function InvoiceReceipt() {
         )}
         <button onClick={() => window.print()}>Print</button>
       </div>
+
+      {invoice.customer && invoice.customer.email && (
+        <div style={{ marginTop: 24 }}>
+          <button onClick={emailReceipt} disabled={sendingEmail}>
+            {sendingEmail ? 'Sending…' : 'Email receipt to customer'}
+          </button>
+          {emailStatus && (
+            <p style={{ color: emailStatus.type === 'error' ? 'red' : 'green' }}>{emailStatus.text}</p>
+          )}
+        </div>
+      )}
 
       {invoice.status !== 'refunded' && (
         <div style={{ marginTop: 24 }}>
