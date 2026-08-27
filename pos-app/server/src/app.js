@@ -8,6 +8,7 @@ const { invoicesRouter } = require('./routes/invoices');
 const { dashboardRouter } = require('./routes/dashboard');
 const { marketingRouter } = require('./routes/marketing');
 const { settingsRouter } = require('./routes/settings');
+const { exportRouter } = require('./routes/export');
 
 function createApp(db) {
   const app = express();
@@ -21,6 +22,7 @@ function createApp(db) {
   app.use('/api/dashboard', dashboardRouter(db));
   app.use('/api/marketing', marketingRouter(db));
   app.use('/api/settings', settingsRouter(db));
+  app.use('/api/export', exportRouter(db));
   return app;
 }
 
