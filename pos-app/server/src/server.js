@@ -30,7 +30,7 @@ if (require('fs').existsSync(clientDist)) {
   app.use(require('express').static(clientDist));
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
-    res.sendFile(path.join(clientDist, 'index.html'));
+    res.sendFile('index.html', { root: clientDist });
   });
 }
 
