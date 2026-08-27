@@ -55,6 +55,9 @@ function invoicesRouter(db) {
       if (err.message === 'INSUFFICIENT_STOCK' || err.message === 'INSUFFICIENT_COINS' || err.message === 'INVALID_VOUCHER' || err.message === 'VOUCHER_NO_VALUE') {
         return res.status(409).json({ error: err.message });
       }
+      if (err.message === 'INVALID_ITEM_QUANTITY') {
+        return res.status(400).json({ error: err.message });
+      }
       throw err;
     }
   });

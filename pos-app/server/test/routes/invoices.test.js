@@ -104,6 +104,22 @@ test('checkout returns 409 VOUCHER_NO_VALUE (distinct from INVALID_VOUCHER) when
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('checkout returns 400 INVALID_ITEM_QUANTITY for a negative quantity (malformed request, not a business-rule conflict)', async () => {
+  const { agent, db, tmp } = await setup();
+  const res = await agent.post('/api/invoices').send({
+    customerId: null,
+    items: [{ variantId: 1, quantity: -1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, 'INVALID_ITEM_QUANTITY');
+
+  const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = 1').get();
+  assert.equal(variant.quantity, 5); // unchanged
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('refund with an empty/missing lines array returns 400, not a 500 crash', async () => {
   const { agent, db, tmp } = await setup();
 

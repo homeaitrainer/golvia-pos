@@ -324,22 +324,25 @@ test('an item discount larger than that line\'s own value is clamped so it canno
   db.close(); fs.unlinkSync(tmp);
 });
 
-test('a negative item discount is clamped to 0 rather than inflating the line\'s value', () => {
+test('a negative item discount throws INVALID_ITEM_QUANTITY rather than being silently clamped', () => {
   const { db, tmp } = setup();
-  const invoice = createInvoice(db, {
-    customerId: 1,
-    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: -50 }], // negative discount = surcharge attempt
-    lumpSumDiscount: null,
-    coinsToRedeem: 0,
-    paymentMethod: 'Cash',
-  }, new Date('2026-08-27'));
+  // Negative/NaN itemDiscount is malformed input (unlike a legitimate-but-oversized positive
+  // discount, which is still clamped elsewhere) -- it's rejected outright so a client-side bug
+  // surfaces immediately instead of being papered over.
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: -50 }], // negative discount = surcharge attempt
+      lumpSumDiscount: null,
+      coinsToRedeem: 0,
+      paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INVALID_ITEM_QUANTITY/);
 
-  assert.equal(invoice.subtotal, 300);
-  assert.equal(invoice.discount_total, 0); // clamped to 0, not -50
-  assert.equal(invoice.total, 300); // not 350
-
-  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
-  assert.equal(invoiceItem.item_discount, 0);
+  const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = 1').get();
+  assert.equal(variant.quantity, 5); // unchanged
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
 
   db.close(); fs.unlinkSync(tmp);
 });
@@ -369,5 +372,114 @@ test('guest sale (no customerId) skips membership updates', () => {
     lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
   });
   assert.equal(invoice.coins_earned, 0);
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a negative item quantity throws INVALID_ITEM_QUANTITY and does not modify stock or create an invoice', () => {
+  const { db, tmp } = setup();
+  // A crafted request bypassing the UI could send a negative quantity: it would otherwise pass
+  // the stock check (a negative number is never > available stock) and then INCREASE stock via
+  // decrementStock.run(-1, id) subtracting a negative -- this must be rejected before any of
+  // that can happen.
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: -2, unitPrice: 300, itemDiscount: 0 }],
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INVALID_ITEM_QUANTITY/);
+
+  const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = 1').get();
+  assert.equal(variant.quantity, 5); // unchanged, definitely not increased
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a zero item quantity throws INVALID_ITEM_QUANTITY', () => {
+  const { db, tmp } = setup();
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 0, unitPrice: 300, itemDiscount: 0 }],
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INVALID_ITEM_QUANTITY/);
+
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a non-integer item quantity throws INVALID_ITEM_QUANTITY', () => {
+  const { db, tmp } = setup();
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 2.5, unitPrice: 300, itemDiscount: 0 }],
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INVALID_ITEM_QUANTITY/);
+
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a NaN item discount throws INVALID_ITEM_QUANTITY', () => {
+  const { db, tmp } = setup();
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: NaN }],
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INVALID_ITEM_QUANTITY/);
+
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('two cart lines for the same variantId whose combined quantity exceeds available stock throws INSUFFICIENT_STOCK, even though neither line alone would', () => {
+  const { db, tmp } = setup(); // variant 1 has 5 in stock
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [
+        { variantId: 1, quantity: 4, unitPrice: 300, itemDiscount: 0 }, // 4 <= 5, passes alone
+        { variantId: 1, quantity: 4, unitPrice: 300, itemDiscount: 0 }, // 4 <= 5, passes alone -- but 4+4=8 > 5
+      ],
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INSUFFICIENT_STOCK/);
+
+  const variant = db.prepare('SELECT quantity FROM product_variants WHERE id = 1').get();
+  assert.equal(variant.quantity, 5); // unchanged -- must not go negative
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a non-integer coinsToRedeem throws INVALID_ITEM_QUANTITY', () => {
+  const { db, tmp } = setup();
+  db.prepare('UPDATE membership_accounts SET current_coin_balance = 1000 WHERE customer_id = 1').run();
+
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+      lumpSumDiscount: null, coinsToRedeem: 150.7, paymentMethod: 'Cash',
+    }, new Date('2026-08-27'));
+  }, /INVALID_ITEM_QUANTITY/);
+
+  const invoiceCount = db.prepare('SELECT COUNT(*) as c FROM invoices').get().c;
+  assert.equal(invoiceCount, 0);
+
   db.close(); fs.unlinkSync(tmp);
 });

@@ -25,6 +25,30 @@ function notifyTierUpgrade(db, customer, newTier) {
 function createInvoice(db, params, now = new Date()) {
   const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId } = params;
 
+  // Validate request shape before ANY DB work (including before opening the transaction below),
+  // so a malformed request can never mutate stock or create a partial invoice.
+  //
+  // A crafted request bypassing the normal UI could send a negative or non-integer quantity,
+  // which would otherwise: pass the stock-sufficiency check below (a negative number is never
+  // greater than available stock), then INCREASE stock on "checkout" (decrementStock.run(-1, id)
+  // subtracts a negative), produce a negative subtotal contribution that can drive
+  // coinsEarnedForAmount negative (silently decrementing the customer's lifetime coins/tier), and
+  // -- combined with other positive-quantity lines in the same cart -- inflate a later
+  // value-based refund proration into a real overpayment.
+  //
+  // itemDiscount gets the same treatment but for a different reason: a NaN/string/negative
+  // discount is rejected outright rather than silently clamped like a legitimate-but-oversized
+  // discount is further below, because malformed input indicates a client-side bug that should
+  // surface immediately rather than be papered over by a clamp.
+  for (const item of items) {
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      throw new Error('INVALID_ITEM_QUANTITY');
+    }
+    if (item.itemDiscount != null && (!Number.isFinite(item.itemDiscount) || item.itemDiscount < 0)) {
+      throw new Error('INVALID_ITEM_QUANTITY');
+    }
+  }
+
   // Populated inside the transaction below (synchronously -- better-sqlite3 transactions run
   // synchronously) when this sale changes the customer's tier, then read after tx() returns to
   // fire the notification outside the transaction -- a slow SMTP call has no business running
@@ -32,17 +56,31 @@ function createInvoice(db, params, now = new Date()) {
   let tierUpgrade = null;
 
   const tx = db.transaction(() => {
-    // Validate stock and, in the same pass, fetch each variant's authoritative sell_price --
-    // the unit price used for subtotal, invoice_items.unit_price, and coin calculations below is
+    // Fetch each distinct variant's current quantity and authoritative sell_price once -- the
+    // unit price used for subtotal, invoice_items.unit_price, and coin calculations below is
     // ALWAYS this DB-fetched value, never the client-supplied item.unitPrice. Trusting a
     // client-supplied price would let anyone invoice an item at whatever price they send.
     const variantsById = new Map();
     for (const item of items) {
-      const variant = db.prepare('SELECT quantity, sell_price FROM product_variants WHERE id = ?').get(item.variantId);
-      if (!variant || variant.quantity < item.quantity) {
+      if (!variantsById.has(item.variantId)) {
+        const variant = db.prepare('SELECT quantity, sell_price FROM product_variants WHERE id = ?').get(item.variantId);
+        if (!variant) throw new Error('INSUFFICIENT_STOCK');
+        variantsById.set(item.variantId, variant);
+      }
+    }
+
+    // Validate stock sufficiency using the AGGREGATE requested quantity per distinct variantId,
+    // not each line independently -- two separate lines referencing the same variantId (e.g. a
+    // scanned item added twice as distinct lines) must not each individually pass a check whose
+    // combined total oversells past zero stock.
+    const requestedQtyByVariant = new Map();
+    for (const item of items) {
+      requestedQtyByVariant.set(item.variantId, (requestedQtyByVariant.get(item.variantId) || 0) + item.quantity);
+    }
+    for (const [variantId, requestedQty] of requestedQtyByVariant) {
+      if (variantsById.get(variantId).quantity < requestedQty) {
         throw new Error('INSUFFICIENT_STOCK');
       }
-      variantsById.set(item.variantId, variant);
     }
 
     // Clamp each line's client-supplied itemDiscount to [0, unitPrice * quantity] using the
@@ -83,6 +121,14 @@ function createInvoice(db, params, now = new Date()) {
     // never goes negative.
     const remainingAfterDiscounts = afterItemDiscounts - lumpSumAmount;
     const maxRedeemableValue = Math.max(0, remainingAfterDiscounts);
+
+    // Reject a malformed coinsToRedeem (non-integer or negative) outright rather than letting it
+    // flow into the integer invoices.coins_redeemed column or silently no-op -- same class of
+    // request-shape problem as the item quantity/discount validation above, so it reuses that
+    // error code.
+    if (coinsToRedeem && (!Number.isInteger(coinsToRedeem) || coinsToRedeem < 0)) {
+      throw new Error('INVALID_ITEM_QUANTITY');
+    }
 
     let coinsRedeemed = 0;
     let coinDiscountValue = 0;
