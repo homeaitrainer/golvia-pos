@@ -23,7 +23,7 @@ function notifyTierUpgrade(db, customer, newTier) {
 }
 
 function createInvoice(db, params, now = new Date()) {
-  const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId } = params;
+  const { customerId, items: rawItems, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId } = params;
 
   // Validate request shape before ANY DB work (including before opening the transaction below),
   // so a malformed request can never mutate stock or create a partial invoice.
@@ -40,14 +40,24 @@ function createInvoice(db, params, now = new Date()) {
   // discount is rejected outright rather than silently clamped like a legitimate-but-oversized
   // discount is further below, because malformed input indicates a client-side bug that should
   // surface immediately rather than be papered over by a clamp.
-  for (const item of items) {
+  for (const item of rawItems) {
     if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
       throw new Error('INVALID_ITEM_QUANTITY');
     }
     if (item.itemDiscount != null && (!Number.isFinite(item.itemDiscount) || item.itemDiscount < 0)) {
       throw new Error('INVALID_ITEM_QUANTITY');
     }
+    if (!Number.isInteger(Number(item.variantId))) {
+      throw new Error('INVALID_ITEM_QUANTITY');
+    }
   }
+
+  // Normalize variantId to a consistent Number type before it's used as a Map key below (stock
+  // aggregation, unit-price lookup). Without this, a request mixing types across lines for the
+  // same underlying row (e.g. variantId: 1 on one line, variantId: '1' on another -- the same
+  // row to SQLite's integer column affinity) would hash to two different Map keys, silently
+  // bypassing the aggregate stock-sufficiency check below.
+  const items = rawItems.map(item => ({ ...item, variantId: Number(item.variantId) }));
 
   // Populated inside the transaction below (synchronously -- better-sqlite3 transactions run
   // synchronously) when this sale changes the customer's tier, then read after tx() returns to

@@ -100,6 +100,7 @@ export default function Checkout() {
                 err.data?.error === 'INSUFFICIENT_COINS' ? 'Customer does not have enough coins.' :
                 err.data?.error === 'VOUCHER_NO_VALUE' ? 'This voucher has no value left to apply — the cart total is already RM0 from other discounts or coin redemption. Reduce a discount or the coins redeemed to use this voucher.' :
                 err.data?.error === 'INVALID_VOUCHER' ? 'The selected voucher is not valid for this sale.' :
+                err.data?.error === 'INVALID_ITEM_QUANTITY' ? 'Check the item quantities, discounts, and coins entered — one of them is not a valid positive number.' :
                 'Checkout failed.');
     }
   }
@@ -134,7 +135,7 @@ export default function Checkout() {
               <td>x{i.quantity}</td>
               <td>RM{i.unitPrice}</td>
               <td>
-                Discount RM <input type="number" value={i.itemDiscount}
+                Discount RM <input type="number" min="0" value={i.itemDiscount}
                   onChange={e => updateItemDiscount(i.variantId, e.target.value)}
                   onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: 60 }} />
               </td>
@@ -176,7 +177,7 @@ export default function Checkout() {
 
       {customer && (
         <div>
-          <label>Redeem coins: <input type="number" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
+          <label>Redeem coins: <input type="number" min="0" step="1" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
             onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} /></label>
         </div>
       )}
