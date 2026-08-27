@@ -1,7 +1,13 @@
 function isBirthdayToday(birthdayIso, today) {
   if (!birthdayIso) return false;
-  const b = new Date(birthdayIso);
-  return b.getMonth() === today.getMonth() && b.getDate() === today.getDate();
+  // Parse month/day directly from string to avoid UTC/local timezone mismatch.
+  // birthdayIso format is 'YYYY-MM-DD'; slice(5,7) = MM, slice(8,10) = DD
+  const birthdayMonth = parseInt(birthdayIso.slice(5, 7), 10);
+  const birthdayDay = parseInt(birthdayIso.slice(8, 10), 10);
+  // today.getMonth() is 0-indexed, so add 1 to compare against MM
+  const todayMonth = today.getMonth() + 1;
+  const todayDay = today.getDate();
+  return birthdayMonth === todayMonth && birthdayDay === todayDay;
 }
 
 const TIER_ORDER = ['White', 'Silver', 'Gold', 'Platinum'];
@@ -23,7 +29,13 @@ function hasMetMonthlyEligibility(qualifyingDays) {
 
 function buildBirthdayVoucher(customerId, today) {
   const iso = today.toISOString();
-  const dateOnly = iso.slice(0, 10);
+  // Derive expires_at date from local date components to avoid UTC conversion.
+  // toISOString() converts local time to UTC, which can shift the date backward
+  // in positive UTC offsets (e.g., Malaysia UTC+8: 02:00 local = 18:00 UTC prev day).
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateOnly = `${year}-${month}-${day}`;
   return {
     customer_id: customerId,
     type: 'birthday',

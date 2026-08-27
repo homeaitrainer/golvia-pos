@@ -27,3 +27,28 @@ test('buildBirthdayVoucher expires at end of the same day', () => {
   assert.equal(v.min_spend, 0);
   assert.ok(v.expires_at.startsWith('2026-08-27'));
 });
+
+test('isBirthdayToday parses date string components, not Date UTC conversion', () => {
+  // Construct today using local-time constructor (not string-based UTC parsing).
+  // Month is 0-indexed: 7 = August
+  const today = new Date(2026, 7, 27, 10, 30, 0);
+  // Birthday is Aug 27; should match today's local month/day regardless of UTC offset.
+  assert.equal(isBirthdayToday('1990-08-27', today), true);
+  // Different day should not match
+  assert.equal(isBirthdayToday('1990-08-26', today), false);
+  // Different month should not match
+  assert.equal(isBirthdayToday('1990-07-27', today), false);
+});
+
+test('buildBirthdayVoucher uses local date for expires_at, not UTC conversion', () => {
+  // Early morning local time: 02:00 on Aug 27 local (would be Aug 26 in UTC+8 offset).
+  // This tests the fix: expires_at should use local date, not toISOString() UTC conversion.
+  const today = new Date(2026, 7, 27, 2, 0, 0);
+  const v = buildBirthdayVoucher(99, today);
+  // expires_at date should reflect the local date (Aug 27), not UTC-converted date
+  assert.equal(v.expires_at.substring(0, 10), '2026-08-27');
+  assert.equal(v.type, 'birthday');
+  assert.equal(v.value, 10);
+  // Verify issued_at is still the full ISO instant (not affected by fix)
+  assert.ok(v.issued_at.includes('T'));
+});
