@@ -46,6 +46,44 @@ test('full return restocks item, reverses coins, marks invoice refunded', () => 
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('refund proceeds and skips restock when underlying product was deleted', () => {
+  const { db, tmp } = setup();
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 2, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+
+  // Mirror the DELETE /api/products/:id route's two statements.
+  db.prepare('DELETE FROM product_variants WHERE product_id = ?').run(1);
+  db.prepare('DELETE FROM products WHERE id = ?').run(1);
+
+  const updatedInvoiceItem = db.prepare('SELECT * FROM invoice_items WHERE id = ?').get(invoiceItem.id);
+  assert.equal(updatedInvoiceItem.variant_id, null); // confirms ON DELETE SET NULL took effect
+
+  let refund;
+  assert.doesNotThrow(() => {
+    refund = createRefund(db, {
+      invoiceId: invoice.id,
+      lines: [{ invoiceItemId: invoiceItem.id, quantity: 2 }],
+      paymentMethod: 'Cash',
+    }, new Date('2026-08-28'));
+  });
+
+  assert.equal(refund.refund_amount, 600);
+  assert.equal(refund.coins_reversed, 200);
+
+  const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = 1').get();
+  assert.equal(account.lifetime_coins, 0);
+  assert.equal(account.current_coin_balance, 0);
+
+  const updatedInvoice = db.prepare('SELECT status FROM invoices WHERE id = ?').get(invoice.id);
+  assert.equal(updatedInvoice.status, 'refunded');
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('partial return reverses proportional coins and marks partially-refunded', () => {
   const { db, tmp } = setup();
   const invoice = createInvoice(db, {

@@ -29,7 +29,9 @@ function createRefund(db, params, now = new Date()) {
       refundAmount += lineRefundAmount;
 
       insertRefundItem.run(refundId, line.invoiceItemId, line.quantity);
-      restockVariant.run(line.quantity, invoiceItem.variant_id);
+      if (invoiceItem.variant_id != null) {
+        restockVariant.run(line.quantity, invoiceItem.variant_id);
+      }
     }
 
     // Reverse coins proportionally to (returned qty / total invoice qty) across the whole invoice
