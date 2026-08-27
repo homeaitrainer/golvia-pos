@@ -25,4 +25,4 @@ if (require('fs').existsSync(clientDist)) {
 }
 
 const PORT = process.env.PORT || 4173;
-app.listen(PORT, () => console.log(`GOLVIA POS server running on http://localhost:${PORT}`));
+app.listen(PORT, '127.0.0.1', () => console.log(`GOLVIA POS server running on http://localhost:${PORT}`));
