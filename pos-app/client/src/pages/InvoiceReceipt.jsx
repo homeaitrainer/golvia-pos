@@ -23,7 +23,7 @@ export default function InvoiceReceipt() {
         <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Discount</th></tr></thead>
         <tbody>
           {invoice.items.map(i => (
-            <tr key={i.id}><td>Variant #{i.variant_id}</td><td>{i.quantity}</td><td>RM{i.unit_price}</td><td>RM{i.item_discount}</td></tr>
+            <tr key={i.id}><td>{i.product_name} ({i.variant_label})</td><td>{i.quantity}</td><td>RM{i.unit_price}</td><td>RM{i.item_discount}</td></tr>
           ))}
         </tbody>
       </table>

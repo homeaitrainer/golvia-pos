@@ -94,7 +94,8 @@ export default function Checkout() {
     <div>
       <h2>Checkout</h2>
       <input ref={scanRef} placeholder="Scan barcode / SKU here" value={scanInput}
-        onChange={e => setScanInput(e.target.value)} onKeyDown={handleScan} />
+        onChange={e => setScanInput(e.target.value)} onKeyDown={handleScan}
+        onBlur={() => setTimeout(() => scanRef.current?.focus(), 300)} />
       <input placeholder="Search products" value={search} onChange={e => runSearch(e.target.value)} />
       <ul>
         {results.map(p => (

@@ -34,6 +34,8 @@ test('checkout creates an invoice and refund reverses it', async () => {
   const detail = await agent.get(`/api/invoices/${invoiceId}`);
   assert.equal(detail.status, 200);
   assert.equal(detail.body.items.length, 1);
+  assert.equal(detail.body.items[0].product_name, 'Ring');
+  assert.equal(detail.body.items[0].variant_label, '40g');
 
   const refund = await agent.post(`/api/invoices/${invoiceId}/refund`).send({
     lines: [{ invoiceItemId: detail.body.items[0].id, quantity: 1 }],
