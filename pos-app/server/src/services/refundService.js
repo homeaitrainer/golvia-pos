@@ -7,8 +7,18 @@ function createRefund(db, params, now = new Date()) {
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
     if (!invoice) throw new Error('INVOICE_NOT_FOUND');
 
-    let refundAmount = 0;
+    // Value-based proration: each line's share of the invoice's line-value total (unit_price *
+    // quantity - item_discount, i.e. value after its OWN item discount, before lump-sum/coins)
+    // determines its share of invoice.total -- which already has the lump-sum discount and coin
+    // redemption baked in -- rather than a raw returned-quantity / total-quantity count.
+    const allInvoiceItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId);
+    const invoiceLineValueTotal = allInvoiceItems.reduce(
+      (sum, i) => sum + (i.unit_price * i.quantity - i.item_discount), 0
+    );
+
+    let returnedLineValue = 0;
     let coinsToReverse = 0;
+    let coinsToReturn = 0;
 
     const insertRefund = db.prepare(`
       INSERT INTO refunds (invoice_id, refund_amount, coins_reversed, payment_method, created_at)
@@ -24,9 +34,10 @@ function createRefund(db, params, now = new Date()) {
 
     for (const line of lines) {
       const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE id = ?').get(line.invoiceItemId);
-      const unitNet = invoiceItem.unit_price - (invoiceItem.item_discount / invoiceItem.quantity);
-      const lineRefundAmount = unitNet * line.quantity;
-      refundAmount += lineRefundAmount;
+      // Prorate this invoice_item's item_discount by the fraction of its quantity being
+      // returned (reduces to the full item_discount when the whole line is returned).
+      const lineDiscountShare = invoiceItem.item_discount * (line.quantity / invoiceItem.quantity);
+      returnedLineValue += invoiceItem.unit_price * line.quantity - lineDiscountShare;
 
       insertRefundItem.run(refundId, line.invoiceItemId, line.quantity);
       if (invoiceItem.variant_id != null) {
@@ -34,16 +45,23 @@ function createRefund(db, params, now = new Date()) {
       }
     }
 
-    // Reverse coins proportionally to (returned qty / total invoice qty) across the whole invoice
-    if (invoice.customer_id && invoice.coins_earned > 0) {
-      const allItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoiceId);
-      const totalQty = allItems.reduce((s, i) => s + i.quantity, 0);
-      const returnedQty = lines.reduce((s, l) => s + l.quantity, 0);
-      coinsToReverse = Math.round(invoice.coins_earned * (returnedQty / totalQty));
+    const valueRatio = invoiceLineValueTotal > 0 ? returnedLineValue / invoiceLineValueTotal : 0;
+    // Prorating the actual amount collected (invoice.total, which already reflects the
+    // lump-sum discount and any coin redemption) means a full return refunds exactly
+    // invoice.total and a partial return refunds its proportional share.
+    const refundAmount = invoice.total * valueRatio;
+
+    // Reverse coins_earned and return coins_redeemed proportionally to the same value-based
+    // ratio used for the refund amount above.
+    if (invoice.customer_id && (invoice.coins_earned > 0 || invoice.coins_redeemed > 0)) {
+      coinsToReverse = Math.round(invoice.coins_earned * valueRatio);
+      coinsToReturn = Math.round((invoice.coins_redeemed || 0) * valueRatio);
 
       const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = ?').get(invoice.customer_id);
       const newLifetime = Math.max(0, account.lifetime_coins - coinsToReverse);
-      const newBalance = Math.max(0, account.current_coin_balance - coinsToReverse);
+      // Redeemed coins were never part of lifetime_coins, so returning them only restores
+      // current_coin_balance -- it does not affect lifetime_coins or tier.
+      const newBalance = Math.max(0, account.current_coin_balance - coinsToReverse + coinsToReturn);
       const newTier = calculateTier(newLifetime);
       db.prepare(`
         UPDATE membership_accounts SET lifetime_coins = ?, current_coin_balance = ?, tier = ?, tier_updated_at = ?
