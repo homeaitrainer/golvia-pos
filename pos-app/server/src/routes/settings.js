@@ -8,7 +8,10 @@ function settingsRouter(db) {
   router.get('/', (req, res) => {
     const rows = db.prepare('SELECT * FROM settings').all();
     const obj = {};
-    for (const r of rows) obj[r.key] = r.value;
+    for (const r of rows) {
+      if (r.key === 'gmail_app_password') continue; // write-only secret: never echoed back
+      obj[r.key] = r.value;
+    }
     res.json(obj);
   });
 

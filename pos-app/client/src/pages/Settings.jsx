@@ -3,11 +3,18 @@ import { apiClient } from '../api/client';
 
 export default function Settings() {
   const [settings, setSettings] = useState({});
+  // gmail_app_password is a write-only secret: the server never returns the saved value, so
+  // this field always loads empty. Track what the user types this session separately so an
+  // untouched field doesn't overwrite the stored password with an empty string on save.
+  const [gmailAppPassword, setGmailAppPassword] = useState('');
 
   useEffect(() => { apiClient.get('/settings').then(setSettings); }, []);
 
   async function save() {
-    await apiClient.put('/settings', settings);
+    const body = { ...settings };
+    delete body.gmail_app_password;
+    if (gmailAppPassword) body.gmail_app_password = gmailAppPassword;
+    await apiClient.put('/settings', body);
     alert('Saved.');
   }
 
@@ -15,7 +22,7 @@ export default function Settings() {
     <div>
       <h2>Settings</h2>
       <label>Gmail address: <input value={settings.gmail_address || ''} onChange={e => setSettings({ ...settings, gmail_address: e.target.value })} /></label>
-      <label>Gmail app password: <input type="password" value={settings.gmail_app_password || ''} onChange={e => setSettings({ ...settings, gmail_app_password: e.target.value })} /></label>
+      <label>Gmail app password: <input type="password" value={gmailAppPassword} placeholder="Leave blank to keep the current password" onChange={e => setGmailAppPassword(e.target.value)} /></label>
       <button onClick={save}>Save</button>
     </div>
   );
