@@ -29,9 +29,13 @@ export default function ProductForm() {
   async function adjustStock(variantId) {
     const delta = Number(prompt('Quantity change (e.g. 5 or -2):'));
     const reason = prompt('Reason:');
-    if (!reason) return alert('Reason is required.');
-    await apiClient.post(`/products/${id}/variants/${variantId}/adjust-stock`, { delta, reason });
-    apiClient.get(`/products/${id}`).then(p => setVariants(p.variants));
+    if (!reason || !reason.trim()) return alert('Reason is required.');
+    try {
+      await apiClient.post(`/products/${id}/variants/${variantId}/adjust-stock`, { delta, reason });
+      apiClient.get(`/products/${id}`).then(p => setVariants(p.variants));
+    } catch (err) {
+      alert(err.data?.error === 'REASON_REQUIRED' ? 'A reason is required for stock adjustments.' : (err.data?.error || err.message || 'Stock adjustment failed.'));
+    }
   }
 
   return (
