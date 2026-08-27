@@ -8,12 +8,12 @@ function invoicesRouter(db) {
   router.use(requireAuth);
 
   router.post('/', (req, res) => {
-    const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod } = req.body;
+    const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId } = req.body;
     try {
-      const invoice = createInvoice(db, { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod });
+      const invoice = createInvoice(db, { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId });
       res.status(201).json(invoice);
     } catch (err) {
-      if (err.message === 'INSUFFICIENT_STOCK' || err.message === 'INSUFFICIENT_COINS') {
+      if (err.message === 'INSUFFICIENT_STOCK' || err.message === 'INSUFFICIENT_COINS' || err.message === 'INVALID_VOUCHER') {
         return res.status(409).json({ error: err.message });
       }
       throw err;

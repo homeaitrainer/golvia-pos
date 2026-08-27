@@ -3,7 +3,7 @@ const { coinsEarnedForAmount, coinsToDiscountValue } = require('./coinEngine');
 const { calculateTier } = require('./tierEngine');
 
 function createInvoice(db, params, now = new Date()) {
-  const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod } = params;
+  const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId } = params;
 
   const tx = db.transaction(() => {
     // Validate stock
@@ -52,7 +52,24 @@ function createInvoice(db, params, now = new Date()) {
       }
     }
 
-    const discountTotal = itemDiscountTotal + lumpSumAmount;
+    // Voucher redemption: scoped to this invoice's own customer (prevents redeeming someone
+    // else's voucher), must be unredeemed and unexpired, and the cart -- after item + lump-sum
+    // discounts, before coins -- must meet its min_spend. Applied AFTER coins as a flat RM
+    // discount, capped at whatever's left so total never goes negative (mirrors the coin
+    // over-redemption cap above).
+    let voucher = null;
+    let voucherDiscountValue = 0;
+    if (voucherId) {
+      voucher = db.prepare('SELECT * FROM vouchers WHERE id = ? AND customer_id = ?').get(voucherId, customerId);
+      if (!voucher || voucher.redeemed_at) throw new Error('INVALID_VOUCHER');
+      if (voucher.expires_at && new Date(voucher.expires_at) < now) throw new Error('INVALID_VOUCHER');
+      if (remainingAfterDiscounts < voucher.min_spend) throw new Error('INVALID_VOUCHER');
+
+      const remainingAfterCoins = Math.max(0, remainingAfterDiscounts - coinDiscountValue);
+      voucherDiscountValue = Math.min(voucher.value, remainingAfterCoins);
+    }
+
+    const discountTotal = itemDiscountTotal + lumpSumAmount + voucherDiscountValue;
     const total = subtotal - discountTotal - coinDiscountValue;
     const coinsEarned = customerId ? coinsEarnedForAmount(subtotal) : 0;
 
@@ -84,6 +101,10 @@ function createInvoice(db, params, now = new Date()) {
         UPDATE membership_accounts SET lifetime_coins = ?, current_coin_balance = ?, tier = ?, tier_updated_at = ?
         WHERE customer_id = ?
       `).run(newLifetime, newBalance, newTier, now.toISOString(), customerId);
+    }
+
+    if (voucher) {
+      db.prepare('UPDATE vouchers SET redeemed_at = ? WHERE id = ?').run(now.toISOString(), voucher.id);
     }
 
     return db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);

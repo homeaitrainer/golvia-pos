@@ -151,6 +151,70 @@ test('partial coin redemption within bounds is unaffected by the cap, even along
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('checking out with a valid, unredeemed, non-expired voucher applies its discount and marks it redeemed', () => {
+  const { db, tmp } = setup();
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at)
+    VALUES (1, 'monthly-tier', 5, 100, '2026-08-01T00:00:00', '2026-08-31T23:59:59')
+  `).run();
+  const voucherId = voucherResult.lastInsertRowid;
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }], // meets min_spend of 100
+    lumpSumDiscount: null,
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+    voucherId,
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.discount_total, 5);
+  assert.equal(invoice.total, 295); // 300 - 5
+
+  const voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(voucherId);
+  assert.equal(voucher.redeemed_at, new Date('2026-08-27').toISOString());
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('attempting to reuse an already-redeemed voucher throws INVALID_VOUCHER', () => {
+  const { db, tmp } = setup();
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at, redeemed_at)
+    VALUES (1, 'monthly-tier', 5, 50, '2026-08-01T00:00:00', '2026-08-31T23:59:59', '2026-08-10T12:00:00.000Z')
+  `).run();
+  const voucherId = voucherResult.lastInsertRowid;
+
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash', voucherId,
+    }, new Date('2026-08-27'));
+  }, /INVALID_VOUCHER/);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a voucher whose min_spend is not met by the cart throws INVALID_VOUCHER', () => {
+  const { db, tmp } = setup();
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at)
+    VALUES (1, 'monthly-tier', 10, 1000, '2026-08-01T00:00:00', '2026-08-31T23:59:59')
+  `).run();
+  const voucherId = voucherResult.lastInsertRowid;
+
+  assert.throws(() => {
+    createInvoice(db, {
+      customerId: 1,
+      items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }], // cart is only 300, well under min_spend 1000
+      lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash', voucherId,
+    }, new Date('2026-08-27'));
+  }, /INVALID_VOUCHER/);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('guest sale (no customerId) skips membership updates', () => {
   const { db, tmp } = setup();
   const invoice = createInvoice(db, {
