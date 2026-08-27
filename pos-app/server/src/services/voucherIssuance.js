@@ -4,6 +4,25 @@ const {
   monthlyVoucherRulesForTier,
   hasMetMonthlyEligibility,
 } = require('./voucherEngine');
+const { sendEmail } = require('./emailService');
+
+// Best-effort notification: voucher issuance must never fail or block because of an email
+// problem (unconfigured Gmail creds, SMTP hiccup, etc). sendEmail() is async -- it can reject
+// (not throw synchronously) even for the EMAIL_NOT_CONFIGURED case -- so this is wired with
+// .then/.catch rather than try/catch around the call, which would not observe a rejection.
+// A message_log row is written ONLY on a confirmed successful send.
+function notifyCustomer(db, customer, triggerType, subject, html) {
+  if (!customer.email) return;
+  sendEmail(db, { to: customer.email, subject, html })
+    .then(() => {
+      db.prepare(`
+        INSERT INTO message_log (customer_id, channel, trigger_type) VALUES (?, 'email', ?)
+      `).run(customer.id, triggerType);
+    })
+    .catch((err) => {
+      console.warn(`Failed to send ${triggerType} email to customer ${customer.id}:`, err.message);
+    });
+}
 
 // Local-date-key helpers, mirroring the discipline already established in voucherEngine.js:
 // derive calendar days from a Date's LOCAL components, never from toISOString() (UTC) or
@@ -57,6 +76,12 @@ function runVoucherChecks(db, now = new Date()) {
       voucher.customer_id, voucher.type, voucher.value, voucher.min_spend, voucher.issued_at, voucher.expires_at
     );
     birthdayVouchersIssued++;
+
+    notifyCustomer(
+      db, customer, 'birthday',
+      'Happy Birthday from GOLVIA!',
+      `<p>Happy Birthday, ${customer.name}!</p><p>To celebrate, we've added a <strong>RM10 voucher</strong> to your account -- valid today only. Visit us in-store to redeem it.</p>`
+    );
   }
 
   // --- Monthly tier vouchers ---
@@ -99,6 +124,12 @@ function runVoucherChecks(db, now = new Date()) {
 
       insertVoucher.run(customer.id, 'monthly-tier', rule.value, rule.minSpend, now.toISOString(), expiresAt);
       monthlyVouchersIssued++;
+
+      notifyCustomer(
+        db, customer, 'monthly-voucher',
+        'New GOLVIA Voucher Unlocked',
+        `<p>Hi ${customer.name},</p><p>You've unlocked a new <strong>RM${rule.value} voucher</strong> (minimum spend RM${rule.minSpend}) at GOLVIA Jewellery. It's valid until the end of this month -- see you soon!</p>`
+      );
     }
   }
 

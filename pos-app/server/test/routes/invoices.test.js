@@ -107,3 +107,47 @@ test('refund with an empty/missing lines array returns 400, not a 500 crash', as
 
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('email-receipt on a guest sale (no customer) returns 400 NO_CUSTOMER_EMAIL', async () => {
+  const { agent, db, tmp } = await setup();
+
+  const checkout = await agent.post('/api/invoices').send({
+    customerId: null,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  });
+  assert.equal(checkout.status, 201);
+  const invoiceId = checkout.body.id;
+
+  const res = await agent.post(`/api/invoices/${invoiceId}/email-receipt`);
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, 'NO_CUSTOMER_EMAIL');
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('email-receipt for a customer with an email on file returns 502 EMAIL_SEND_FAILED when Gmail is not configured', async () => {
+  const { agent, db, tmp } = await setup();
+  db.prepare(`INSERT INTO customers (id, name, phone, email) VALUES (1, 'Alice', '0123456789', 'alice@example.com')`).run();
+  db.prepare(`INSERT INTO membership_accounts (customer_id, lifetime_coins, current_coin_balance, tier) VALUES (1, 0, 0, 'White')`).run();
+
+  const checkout = await agent.post('/api/invoices').send({
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  });
+  assert.equal(checkout.status, 201);
+  const invoiceId = checkout.body.id;
+
+  // No gmail_address/gmail_app_password have been written to settings, so sendEmail() throws
+  // EMAIL_NOT_CONFIGURED before touching the network -- this asserts the route surfaces that as
+  // a 502, unlike the best-effort birthday/monthly/tier-upgrade sends elsewhere in the app.
+  const res = await agent.post(`/api/invoices/${invoiceId}/email-receipt`);
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error, 'EMAIL_SEND_FAILED');
+
+  const logRows = db.prepare(`SELECT * FROM message_log WHERE trigger_type = 'receipt'`).all();
+  assert.equal(logRows.length, 0); // no message_log row on a failed send
+
+  db.close(); fs.unlinkSync(tmp);
+});

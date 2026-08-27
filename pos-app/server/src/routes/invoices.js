@@ -2,6 +2,45 @@ const express = require('express');
 const { requireAuth } = require('../middleware/requireAuth');
 const { createInvoice } = require('../services/checkoutService');
 const { createRefund } = require('../services/refundService');
+const { sendEmail } = require('../services/emailService');
+
+function getInvoiceWithDetails(db, invoiceId) {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+  if (!invoice) return null;
+  const items = db.prepare(`
+    SELECT ii.*, COALESCE(p.name, 'Deleted product') as product_name, COALESCE(pv.variant_label, 'N/A') as variant_label
+    FROM invoice_items ii
+    LEFT JOIN product_variants pv ON pv.id = ii.variant_id
+    LEFT JOIN products p ON p.id = pv.product_id
+    WHERE ii.invoice_id = ?
+  `).all(invoiceId);
+  const customer = invoice.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id) : null;
+  return { ...invoice, items, customer };
+}
+
+function buildReceiptHtml(invoice) {
+  const rows = invoice.items.map(item => `
+    <tr>
+      <td>${item.product_name}${item.variant_label && item.variant_label !== 'N/A' ? ` (${item.variant_label})` : ''}</td>
+      <td>${item.quantity}</td>
+      <td>${item.unit_price.toFixed(2)}</td>
+    </tr>
+  `).join('');
+  return `
+    <p>Thank you for shopping at GOLVIA Jewellery.</p>
+    <p><strong>Invoice:</strong> ${invoice.invoice_number}<br/>
+    <strong>Date:</strong> ${invoice.created_at}<br/>
+    <strong>Payment method:</strong> ${invoice.payment_method}</p>
+    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
+      <thead>
+        <tr><th>Item</th><th>Qty</th><th>Unit Price (RM)</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p>Discount total: RM${invoice.discount_total.toFixed(2)}<br/>
+    <strong>Total: RM${invoice.total.toFixed(2)}</strong></p>
+  `;
+}
 
 function invoicesRouter(db) {
   const router = express.Router();
@@ -32,17 +71,33 @@ function invoicesRouter(db) {
   });
 
   router.get('/:id', (req, res) => {
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    const invoice = getInvoiceWithDetails(db, req.params.id);
     if (!invoice) return res.status(404).json({ error: 'NOT_FOUND' });
-    const items = db.prepare(`
-      SELECT ii.*, COALESCE(p.name, 'Deleted product') as product_name, COALESCE(pv.variant_label, 'N/A') as variant_label
-      FROM invoice_items ii
-      LEFT JOIN product_variants pv ON pv.id = ii.variant_id
-      LEFT JOIN products p ON p.id = pv.product_id
-      WHERE ii.invoice_id = ?
-    `).all(req.params.id);
-    const customer = invoice.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id) : null;
-    res.json({ ...invoice, items, customer });
+    res.json(invoice);
+  });
+
+  router.post('/:id/email-receipt', async (req, res) => {
+    const invoice = getInvoiceWithDetails(db, req.params.id);
+    if (!invoice) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (!invoice.customer || !invoice.customer.email) {
+      return res.status(400).json({ error: 'NO_CUSTOMER_EMAIL' });
+    }
+
+    try {
+      await sendEmail(db, {
+        to: invoice.customer.email,
+        subject: `Your GOLVIA Receipt ${invoice.invoice_number}`,
+        html: buildReceiptHtml(invoice),
+      });
+    } catch (err) {
+      return res.status(502).json({ error: 'EMAIL_SEND_FAILED' });
+    }
+
+    db.prepare(`
+      INSERT INTO message_log (customer_id, channel, trigger_type) VALUES (?, 'email', 'receipt')
+    `).run(invoice.customer.id);
+
+    res.json({ ok: true });
   });
 
   router.post('/:id/refund', (req, res) => {

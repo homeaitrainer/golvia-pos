@@ -1,9 +1,35 @@
 const { nextInvoiceNumber } = require('./invoiceNumbering');
 const { coinsEarnedForAmount, coinsToDiscountValue } = require('./coinEngine');
 const { calculateTier } = require('./tierEngine');
+const { sendEmail } = require('./emailService');
+
+// Best-effort notification, mirroring voucherIssuance.js's notifyCustomer: a tier-upgrade email
+// must never affect the (already-committed) checkout. sendEmail() is async and rejects rather
+// than throwing synchronously, so this is wired with .then/.catch rather than try/catch. A
+// message_log row is written ONLY on a confirmed successful send.
+function notifyTierUpgrade(db, customer, newTier) {
+  if (!customer || !customer.email) return;
+  const subject = `You've been upgraded to GOLVIA ${newTier}!`;
+  const html = `<p>Congratulations, ${customer.name}!</p><p>You've been upgraded to <strong>GOLVIA ${newTier}</strong> tier. Enjoy your new benefits on your next visit.</p>`;
+  sendEmail(db, { to: customer.email, subject, html })
+    .then(() => {
+      db.prepare(`
+        INSERT INTO message_log (customer_id, channel, trigger_type) VALUES (?, 'email', 'tier-upgrade')
+      `).run(customer.id);
+    })
+    .catch((err) => {
+      console.warn(`Failed to send tier-upgrade email to customer ${customer.id}:`, err.message);
+    });
+}
 
 function createInvoice(db, params, now = new Date()) {
   const { customerId, items, lumpSumDiscount, coinsToRedeem, paymentMethod, voucherId } = params;
+
+  // Populated inside the transaction below (synchronously -- better-sqlite3 transactions run
+  // synchronously) when this sale changes the customer's tier, then read after tx() returns to
+  // fire the notification outside the transaction -- a slow SMTP call has no business running
+  // inside a synchronous DB transaction.
+  let tierUpgrade = null;
 
   const tx = db.transaction(() => {
     // Validate stock
@@ -101,6 +127,9 @@ function createInvoice(db, params, now = new Date()) {
         UPDATE membership_accounts SET lifetime_coins = ?, current_coin_balance = ?, tier = ?, tier_updated_at = ?
         WHERE customer_id = ?
       `).run(newLifetime, newBalance, newTier, now.toISOString(), customerId);
+      if (newTier !== account.tier) {
+        tierUpgrade = { customerId, newTier };
+      }
     }
 
     if (voucher) {
@@ -110,7 +139,14 @@ function createInvoice(db, params, now = new Date()) {
     return db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
   });
 
-  return tx();
+  const invoice = tx();
+
+  if (tierUpgrade) {
+    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(tierUpgrade.customerId);
+    notifyTierUpgrade(db, customer, tierUpgrade.newTier);
+  }
+
+  return invoice;
 }
 
 module.exports = { createInvoice };
