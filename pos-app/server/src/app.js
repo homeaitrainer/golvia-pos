@@ -10,7 +10,10 @@ const { marketingRouter } = require('./routes/marketing');
 const { settingsRouter } = require('./routes/settings');
 const { exportRouter } = require('./routes/export');
 
-function createApp(db) {
+// `now` is an optional override, threaded through to routers (currently just dashboardRouter)
+// that need to compute "today" -- defaults to real wall-clock time in production, and lets
+// tests pin a fixed local date/time without depending on the real clock.
+function createApp(db, { now = () => new Date() } = {}) {
   const app = express();
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
@@ -19,7 +22,7 @@ function createApp(db) {
   app.use('/api/products', productsRouter(db));
   app.use('/api/customers', customersRouter(db));
   app.use('/api/invoices', invoicesRouter(db));
-  app.use('/api/dashboard', dashboardRouter(db));
+  app.use('/api/dashboard', dashboardRouter(db, now));
   app.use('/api/marketing', marketingRouter(db));
   app.use('/api/settings', settingsRouter(db));
   app.use('/api/export', exportRouter(db));
