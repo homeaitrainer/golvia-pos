@@ -45,12 +45,24 @@ function createInvoice(db, params, now = new Date()) {
       variantsById.set(item.variantId, variant);
     }
 
+    // Clamp each line's client-supplied itemDiscount to [0, unitPrice * quantity] using the
+    // server-authoritative sell_price (never the client-sent price) so a discount can't exceed
+    // that line's own value (which would make its net contribution negative) or be negative
+    // itself (which would inflate the line's value instead of discounting it). This clamped
+    // value is used everywhere itemDiscount previously was: subtotal/discount accumulation here,
+    // and what gets persisted to invoice_items.item_discount below.
+    // Indexed by position in `items` (not by variantId) so this stays correct even if a caller
+    // sends the same variantId across multiple lines with different discounts.
+    const clampedItemDiscounts = [];
     let subtotal = 0;
     let itemDiscountTotal = 0;
     for (const item of items) {
       const unitPrice = variantsById.get(item.variantId).sell_price;
-      subtotal += unitPrice * item.quantity;
-      itemDiscountTotal += item.itemDiscount || 0;
+      const lineValue = unitPrice * item.quantity;
+      const clampedItemDiscount = Math.max(0, Math.min(item.itemDiscount || 0, lineValue));
+      clampedItemDiscounts.push(clampedItemDiscount);
+      subtotal += lineValue;
+      itemDiscountTotal += clampedItemDiscount;
     }
 
     const afterItemDiscounts = subtotal - itemDiscountTotal;
@@ -59,10 +71,12 @@ function createInvoice(db, params, now = new Date()) {
       lumpSumAmount = lumpSumDiscount.type === 'percent'
         ? afterItemDiscounts * (lumpSumDiscount.value / 100)
         : lumpSumDiscount.value;
-      // Cap the lump-sum discount so it can reduce the price to 0 but no further. This must
-      // happen BEFORE the coin-redemption cap below, so that cap (and the voucher cap after it)
-      // works off a sane, non-negative baseline instead of compounding an already-negative one.
-      lumpSumAmount = Math.min(lumpSumAmount, afterItemDiscounts);
+      // Cap the lump-sum discount so it can reduce the price to 0 but no further, and floor it
+      // at 0 so a negative lump-sum value can't act as a surcharge that increases the total
+      // above the pre-discount subtotal. This must happen BEFORE the coin-redemption cap below,
+      // so that cap (and the voucher cap after it) works off a sane, non-negative baseline
+      // instead of compounding an already-negative one.
+      lumpSumAmount = Math.max(0, Math.min(lumpSumAmount, afterItemDiscounts));
     }
 
     // Coins can discount at most what's left after item + lump-sum discounts, so the total
@@ -104,9 +118,12 @@ function createInvoice(db, params, now = new Date()) {
       const remainingAfterCoins = Math.max(0, remainingAfterDiscounts - coinDiscountValue);
       voucherDiscountValue = Math.min(voucher.value, remainingAfterCoins);
       // Nothing left for the voucher to discount (e.g. coin redemption already brought the
-      // total to 0) -- reject it instead of silently redeeming it for zero benefit. This check
+      // total to 0) -- reject it instead of silently redeeming it for zero benefit, but with a
+      // DISTINCT error from the other voucher validation failures (not found, wrong customer,
+      // already redeemed, expired, min-spend not met) so the caller can tell the cashier
+      // specifically that reducing the coin redemption would let the voucher apply. This check
       // runs before the voucher is ever marked redeemed (below), so the customer keeps it.
-      if (voucherDiscountValue <= 0) throw new Error('INVALID_VOUCHER');
+      if (voucherDiscountValue <= 0) throw new Error('VOUCHER_NO_VALUE');
     }
 
     const discountTotal = itemDiscountTotal + lumpSumAmount + voucherDiscountValue;
@@ -132,11 +149,11 @@ function createInvoice(db, params, now = new Date()) {
       INSERT INTO invoice_items (invoice_id, variant_id, quantity, unit_price, item_discount) VALUES (?, ?, ?, ?, ?)
     `);
     const decrementStock = db.prepare('UPDATE product_variants SET quantity = quantity - ? WHERE id = ?');
-    for (const item of items) {
+    items.forEach((item, idx) => {
       const unitPrice = variantsById.get(item.variantId).sell_price;
-      insertItem.run(invoiceId, item.variantId, item.quantity, unitPrice, item.itemDiscount || 0);
+      insertItem.run(invoiceId, item.variantId, item.quantity, unitPrice, clampedItemDiscounts[idx]);
       decrementStock.run(item.quantity, item.variantId);
-    }
+    });
 
     if (customerId) {
       const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = ?').get(customerId);

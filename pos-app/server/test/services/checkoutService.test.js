@@ -269,7 +269,7 @@ test('a lump-sum percent discount over 100% caps total at 0, not negative', () =
   db.close(); fs.unlinkSync(tmp);
 });
 
-test('a voucher that would discount RM0 because coin redemption already zeroed the total throws INVALID_VOUCHER, and the voucher stays unredeemed', () => {
+test('a voucher that would discount RM0 because coin redemption already zeroed the total throws the distinct VOUCHER_NO_VALUE error, and the voucher stays unredeemed', () => {
   const { db, tmp } = setup();
   db.prepare('UPDATE membership_accounts SET lifetime_coins = 40000, current_coin_balance = 40000, tier = ? WHERE customer_id = 1').run('Gold');
   const voucherResult = db.prepare(`
@@ -278,6 +278,9 @@ test('a voucher that would discount RM0 because coin redemption already zeroed t
   `).run();
   const voucherId = voucherResult.lastInsertRowid;
 
+  // Distinct from the other voucher validation failures (not found, wrong customer, redeemed,
+  // expired, min-spend not met) which still throw INVALID_VOUCHER -- this specific case gives
+  // the cashier an actionable message (reduce coin redemption) instead of a generic rejection.
   assert.throws(() => {
     createInvoice(db, {
       customerId: 1,
@@ -287,11 +290,73 @@ test('a voucher that would discount RM0 because coin redemption already zeroed t
       paymentMethod: 'Cash',
       voucherId,
     }, new Date('2026-08-27'));
-  }, /INVALID_VOUCHER/);
+  }, /VOUCHER_NO_VALUE/);
 
   const voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(voucherId);
   assert.equal(voucher.redeemed_at, null); // never marked as used
   assert.equal(voucher.redeemed_invoice_id, null);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('an item discount larger than that line\'s own value is clamped so it cannot make the line net negative', () => {
+  const { db, tmp } = setup();
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    // Line value is 300 * 1 = 300, but itemDiscount claims 1000 -- far more than the line
+    // is worth. Without clamping this would make itemDiscountTotal (1000) exceed subtotal
+    // (300), driving afterItemDiscounts negative and ultimately producing a negative
+    // refund_amount on any later refund.
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 1000 }],
+    lumpSumDiscount: null,
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.subtotal, 300);
+  // Discount clamped to the line's own value (300), not the requested 1000.
+  assert.equal(invoice.discount_total, 300);
+  assert.equal(invoice.total, 0); // floored at 0, not -700
+
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+  assert.equal(invoiceItem.item_discount, 300); // persisted value is also clamped
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a negative item discount is clamped to 0 rather than inflating the line\'s value', () => {
+  const { db, tmp } = setup();
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: -50 }], // negative discount = surcharge attempt
+    lumpSumDiscount: null,
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.subtotal, 300);
+  assert.equal(invoice.discount_total, 0); // clamped to 0, not -50
+  assert.equal(invoice.total, 300); // not 350
+
+  const invoiceItem = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').get(invoice.id);
+  assert.equal(invoiceItem.item_discount, 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a negative lump-sum discount is clamped to 0 rather than acting as a surcharge', () => {
+  const { db, tmp } = setup();
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: { type: 'amount', value: -100 }, // attempted surcharge
+    coinsToRedeem: 0,
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.subtotal, 300);
+  assert.equal(invoice.discount_total, 0); // clamped to 0, not -100
+  assert.equal(invoice.total, 300); // not 400 -- total never exceeds the pre-discount subtotal
 
   db.close(); fs.unlinkSync(tmp);
 });

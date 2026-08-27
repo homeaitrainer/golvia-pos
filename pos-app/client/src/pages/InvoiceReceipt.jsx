@@ -79,7 +79,14 @@ export default function InvoiceReceipt() {
 
   return (
     <div>
-      <style>{`@media print { @page { size: A5; margin: 10mm; } }`}</style>
+      <style>{`
+        @media print {
+          @page { size: A5; margin: 10mm; }
+          body * { visibility: hidden; }
+          .receipt-printable, .receipt-printable * { visibility: visible; }
+          .receipt-printable { position: absolute; left: 0; top: 0; }
+        }
+      `}</style>
       <div className="receipt-printable" style={{ width: '148mm', minHeight: '210mm', margin: '0 auto', padding: 16 }}>
         <h2>GOLVIA</h2>
         <p>16 Jalan SC 1, Pusat Perindustrian Sungai Chua, 43200 Kajang, Selangor, Malaysia</p>

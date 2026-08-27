@@ -81,6 +81,29 @@ test('checkout returns 409 on insufficient stock', async () => {
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('checkout returns 409 VOUCHER_NO_VALUE (distinct from INVALID_VOUCHER) when coin redemption already zeroed the total', async () => {
+  const { agent, db, tmp } = await setup();
+  db.prepare(`INSERT INTO customers (id, name, phone) VALUES (1, 'Alice', '0123456789')`).run();
+  db.prepare(`INSERT INTO membership_accounts (customer_id, lifetime_coins, current_coin_balance, tier) VALUES (1, 40000, 40000, 'Gold')`).run();
+  const voucherResult = db.prepare(`
+    INSERT INTO vouchers (customer_id, type, value, min_spend, issued_at, expires_at)
+    VALUES (1, 'monthly-tier', 5, 0, '2026-08-01T00:00:00', '2026-08-31T23:59:59')
+  `).run();
+
+  const res = await agent.post('/api/invoices').send({
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null,
+    coinsToRedeem: 30000, // RM300 off -- the entire cart, leaving nothing for the voucher
+    paymentMethod: 'Cash',
+    voucherId: voucherResult.lastInsertRowid,
+  });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, 'VOUCHER_NO_VALUE');
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('refund with an empty/missing lines array returns 400, not a 500 crash', async () => {
   const { agent, db, tmp } = await setup();
 
