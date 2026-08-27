@@ -106,6 +106,51 @@ test('throws INSUFFICIENT_COINS when redeeming more than balance', () => {
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('redeeming more coins than the cart total caps discount and total at exactly 0, debiting only the coins actually used', () => {
+  const { db, tmp } = setup();
+  db.prepare('UPDATE membership_accounts SET lifetime_coins = 40000, current_coin_balance = 40000, tier = ? WHERE customer_id = 1').run('Gold');
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null,
+    coinsToRedeem: 40000, // RM400 off, far more than the RM300 cart -- and equal to the full balance
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  // Discount capped at RM300 (the whole cart), so only 30000 coins (RM300) are actually used.
+  assert.equal(invoice.coins_redeemed, 30000);
+  assert.equal(invoice.total, 0); // capped at exactly 0, not negative
+
+  const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = 1').get();
+  // Balance only debited for the 30000 coins actually applied, plus the 100 coins earned on this sale.
+  assert.equal(account.current_coin_balance, 40000 - 30000 + 100);
+  assert.equal(account.lifetime_coins, 40000 + 100);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('partial coin redemption within bounds is unaffected by the cap, even alongside item + lump-sum discounts', () => {
+  const { db, tmp } = setup();
+  db.prepare('UPDATE membership_accounts SET lifetime_coins = 4000, current_coin_balance = 4000, tier = ? WHERE customer_id = 1').run('Silver');
+
+  const invoice = createInvoice(db, {
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 30 }], // 300 - 30 = 270
+    lumpSumDiscount: { type: 'percent', value: 10 }, // 10% off 270 = 27 -> remaining 243
+    coinsToRedeem: 1000, // RM10 off, well within the RM243 remaining
+    paymentMethod: 'Cash',
+  }, new Date('2026-08-27'));
+
+  assert.equal(invoice.coins_redeemed, 1000); // not capped, requested amount used exactly
+  assert.equal(invoice.total, 233); // 243 - 10
+
+  const account = db.prepare('SELECT * FROM membership_accounts WHERE customer_id = 1').get();
+  assert.equal(account.current_coin_balance, 4000 - 1000 + 100); // redeemed then earned 100 from floor(300/3)
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('guest sale (no customerId) skips membership updates', () => {
   const { db, tmp } = setup();
   const invoice = createInvoice(db, {

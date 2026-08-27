@@ -29,6 +29,11 @@ function createInvoice(db, params, now = new Date()) {
         : lumpSumDiscount.value;
     }
 
+    // Coins can discount at most what's left after item + lump-sum discounts, so the total
+    // never goes negative.
+    const remainingAfterDiscounts = afterItemDiscounts - lumpSumAmount;
+    const maxRedeemableValue = Math.max(0, remainingAfterDiscounts);
+
     let coinsRedeemed = 0;
     let coinDiscountValue = 0;
     if (coinsToRedeem && coinsToRedeem > 0) {
@@ -39,6 +44,12 @@ function createInvoice(db, params, now = new Date()) {
       }
       coinsRedeemed = coinsToRedeem;
       coinDiscountValue = coinsToDiscountValue(coinsRedeemed);
+      if (coinDiscountValue > maxRedeemableValue) {
+        // Over-redemption: cap the discount at exactly the remaining amount (total -> 0),
+        // and only debit the customer for the coins actually applied.
+        coinDiscountValue = maxRedeemableValue;
+        coinsRedeemed = Math.round(coinDiscountValue * 100);
+      }
     }
 
     const discountTotal = itemDiscountTotal + lumpSumAmount;
