@@ -98,7 +98,7 @@ export default function Checkout() {
     } catch (err) {
       setError(err.data?.error === 'INSUFFICIENT_STOCK' ? 'Not enough stock for one or more items.' :
                 err.data?.error === 'INSUFFICIENT_COINS' ? 'Customer does not have enough coins.' :
-                err.data?.error === 'VOUCHER_NO_VALUE' ? 'This voucher has no value left to apply — try reducing the coins redeemed.' :
+                err.data?.error === 'VOUCHER_NO_VALUE' ? 'This voucher has no value left to apply — the cart total is already RM0 from other discounts or coin redemption. Reduce a discount or the coins redeemed to use this voucher.' :
                 err.data?.error === 'INVALID_VOUCHER' ? 'The selected voucher is not valid for this sale.' :
                 'Checkout failed.');
     }
