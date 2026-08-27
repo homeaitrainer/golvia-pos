@@ -20,6 +20,7 @@ export default function Checkout() {
   const [lumpSumType, setLumpSumType] = useState('amount');
   const [lumpSumValue, setLumpSumValue] = useState(0);
   const [coinsToRedeem, setCoinsToRedeem] = useState(0);
+  const [selectedVoucherId, setSelectedVoucherId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [error, setError] = useState('');
   const scanRef = useRef(null);
@@ -64,8 +65,10 @@ export default function Checkout() {
     try {
       const c = await apiClient.get(`/customers/by-phone/${encodeURIComponent(phone)}`);
       setCustomer(c);
+      setSelectedVoucherId('');
     } catch {
       setCustomer(null);
+      setSelectedVoucherId('');
       setError('Customer not found — you can create one from the Customers page, or check out as guest.');
     }
   }
@@ -89,11 +92,13 @@ export default function Checkout() {
         lumpSumDiscount: lumpSumValue > 0 ? { type: lumpSumType, value: Number(lumpSumValue) } : null,
         coinsToRedeem: Number(coinsToRedeem) || 0,
         paymentMethod,
+        voucherId: selectedVoucherId ? Number(selectedVoucherId) : null,
       });
       navigate(`/invoices/${invoice.id}/receipt`);
     } catch (err) {
       setError(err.data?.error === 'INSUFFICIENT_STOCK' ? 'Not enough stock for one or more items.' :
                 err.data?.error === 'INSUFFICIENT_COINS' ? 'Customer does not have enough coins.' :
+                err.data?.error === 'INVALID_VOUCHER' ? 'The selected voucher is not valid for this sale.' :
                 'Checkout failed.');
     }
   }
@@ -143,6 +148,21 @@ export default function Checkout() {
         onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
       <button onClick={lookupCustomer}>Look up</button>
       {customer && <p>{customer.name} — {customer.membership.tier} tier, {customer.membership.current_coin_balance} coins</p>}
+      {customer && customer.vouchers && customer.vouchers.length > 0 && (
+        <div>
+          <label>Voucher:{' '}
+            <select value={selectedVoucherId} onChange={e => setSelectedVoucherId(e.target.value)}
+              onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
+              <option value="">None</option>
+              {customer.vouchers.map(v => (
+                <option key={v.id} value={v.id}>
+                  RM{v.value} off (min spend RM{v.min_spend})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       <h3>Discounts</h3>
       <select value={lumpSumType} onChange={e => setLumpSumType(e.target.value)}
