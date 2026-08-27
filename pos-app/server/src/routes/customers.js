@@ -6,6 +6,13 @@ function withMembership(db, customer) {
   return { ...customer, membership };
 }
 
+function withVouchers(db, customer, now = new Date()) {
+  const vouchers = db.prepare(`
+    SELECT * FROM vouchers WHERE customer_id = ? AND redeemed_at IS NULL AND (expires_at IS NULL OR expires_at >= ?)
+  `).all(customer.id, now.toISOString());
+  return { ...customer, vouchers };
+}
+
 function customersRouter(db) {
   const router = express.Router();
   router.use(requireAuth);
@@ -25,14 +32,14 @@ function customersRouter(db) {
   router.get('/by-phone/:phone', (req, res) => {
     const customer = db.prepare('SELECT * FROM customers WHERE phone = ?').get(req.params.phone);
     if (!customer) return res.status(404).json({ error: 'NOT_FOUND' });
-    res.json(withMembership(db, customer));
+    res.json(withVouchers(db, withMembership(db, customer)));
   });
 
   router.get('/:id', (req, res) => {
     const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.params.id);
     if (!customer) return res.status(404).json({ error: 'NOT_FOUND' });
     const invoices = db.prepare('SELECT * FROM invoices WHERE customer_id = ? ORDER BY created_at DESC').all(req.params.id);
-    res.json({ ...withMembership(db, customer), invoices });
+    res.json({ ...withVouchers(db, withMembership(db, customer)), invoices });
   });
 
   router.post('/', (req, res) => {
