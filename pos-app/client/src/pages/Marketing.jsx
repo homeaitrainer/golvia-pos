@@ -3,15 +3,30 @@ import { apiClient } from '../api/client';
 
 export default function Marketing() {
   const [pending, setPending] = useState([]);
-  useEffect(() => { apiClient.get('/marketing/pending').then(setPending); }, []);
+
+  function load() {
+    return apiClient.get('/marketing/pending').then(setPending);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function sendWhatsApp(customer) {
+    try {
+      await apiClient.post(`/marketing/${customer.id}/mark-sent`, { triggerType: customer.triggerType });
+    } finally {
+      window.open(customer.whatsappLink, '_blank');
+      load();
+    }
+  }
+
   return (
     <div>
       <h2>Marketing — Pending Today</h2>
       <ul>
         {pending.map(c => (
-          <li key={c.id}>
+          <li key={`${c.id}-${c.triggerType}`}>
             {c.name} — {c.triggerType} — {c.message}{' '}
-            <a href={c.whatsappLink} target="_blank" rel="noreferrer">Send via WhatsApp</a>
+            <button onClick={() => sendWhatsApp(c)}>Send via WhatsApp</button>
           </li>
         ))}
       </ul>

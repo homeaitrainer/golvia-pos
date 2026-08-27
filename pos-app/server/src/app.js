@@ -23,7 +23,7 @@ function createApp(db, { now = () => new Date() } = {}) {
   app.use('/api/customers', customersRouter(db));
   app.use('/api/invoices', invoicesRouter(db));
   app.use('/api/dashboard', dashboardRouter(db, now));
-  app.use('/api/marketing', marketingRouter(db));
+  app.use('/api/marketing', marketingRouter(db, now));
   app.use('/api/settings', settingsRouter(db));
   app.use('/api/export', exportRouter(db));
   return app;
