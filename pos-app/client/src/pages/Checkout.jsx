@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
+import { flashElement, successPulse } from '../gsapMotion';
 
 function refocusScanUnlessMovingToField(e, scanRef) {
   const next = e.relatedTarget;
@@ -26,6 +27,8 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [error, setError] = useState('');
   const scanRef = useRef(null);
+  const cartCardRef = useRef(null);
+  const checkoutBtnRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => { scanRef.current?.focus(); }, []);
@@ -48,6 +51,7 @@ export default function Checkout() {
         unitPrice: variant.sell_price, quantity: 1, itemDiscount: 0,
       }];
     });
+    flashElement(cartCardRef.current);
   }
 
   async function handleScan(e) {
@@ -113,7 +117,7 @@ export default function Checkout() {
         paymentMethod,
         voucherId: selectedVoucherId ? Number(selectedVoucherId) : null,
       });
-      navigate(`/invoices/${invoice.id}/receipt`);
+      successPulse(checkoutBtnRef.current, () => navigate(`/invoices/${invoice.id}/receipt`));
     } catch (err) {
       setError(err.data?.error === 'INSUFFICIENT_STOCK' ? 'Not enough stock for one or more items.' :
                 err.data?.error === 'INSUFFICIENT_COINS' ? 'Customer does not have enough coins.' :
@@ -159,7 +163,7 @@ export default function Checkout() {
         )}
       </div>
 
-      <div className="golvia-card">
+      <div className="golvia-card" ref={cartCardRef}>
         <h3 style={{ marginTop: 0 }}>Cart</h3>
         <table>
           <tbody>
@@ -264,7 +268,7 @@ export default function Checkout() {
 
         <p style={{ fontSize: 18, fontWeight: 'bold' }}>Subtotal: RM{subtotal.toFixed(2)}</p>
         {error && <p className="golvia-error">{error}</p>}
-        <button className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
+        <button ref={checkoutBtnRef} className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
       </div>
     </div>
   );
