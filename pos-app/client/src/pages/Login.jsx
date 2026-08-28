@@ -18,12 +18,20 @@ export default function Login({ onLoggedIn }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ maxWidth: 320, margin: '80px auto' }}>
-      <h1>GOLVIA POS</h1>
-      <input placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} />
-      <input placeholder="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      <button type="submit">Log in</button>
-    </form>
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 100 }}>
+      <form onSubmit={handleSubmit} className="golvia-card" style={{ width: 320 }}>
+        <h1 style={{ textAlign: 'center', color: 'var(--golvia-accent-dark)', letterSpacing: 2 }}>GOLVIA POS</h1>
+        <div className="golvia-field">
+          <label>Username</label>
+          <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%' }} />
+        </div>
+        <div className="golvia-field">
+          <label>Password</label>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={{ width: '100%' }} />
+        </div>
+        {error && <p className="golvia-error">{error}</p>}
+        <button type="submit" className="golvia-btn-primary" style={{ width: '100%' }}>Log in</button>
+      </form>
+    </div>
   );
 }

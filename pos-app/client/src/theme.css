@@ -1,0 +1,161 @@
+:root {
+  --golvia-bg: #f4f7f8;
+  --golvia-surface: #ffffff;
+  --golvia-nav-bg: #0f2743;
+  --golvia-nav-text: #cfe3de;
+  --golvia-accent: #14a38c;
+  --golvia-accent-dark: #0e7d6b;
+  --golvia-accent-tint: #e3f6f2;
+  --golvia-border: #dbe4e6;
+  --golvia-text: #14213d;
+  --golvia-text-muted: #6b7785;
+  --golvia-danger: #c0392b;
+  --golvia-success: #1e8e5a;
+  --golvia-font-heading: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --golvia-font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: var(--golvia-bg);
+  color: var(--golvia-text);
+  font-family: var(--golvia-font-body);
+  margin: 0;
+}
+
+a { color: var(--golvia-accent-dark); }
+
+h1, h2, h3 {
+  font-family: var(--golvia-font-heading);
+  font-weight: 700;
+  color: var(--golvia-text);
+  margin: 0 0 12px;
+}
+h2 { font-size: 22px; letter-spacing: 0.2px; }
+h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
+
+.golvia-page { max-width: 1000px; margin: 0 auto; padding: 28px 24px; box-sizing: border-box; }
+
+.golvia-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--golvia-nav-bg);
+  padding: 14px 24px;
+  border-bottom: 3px solid var(--golvia-accent);
+}
+.golvia-brand {
+  font-family: var(--golvia-font-heading);
+  font-weight: 700;
+  color: #ffffff;
+  font-size: 20px;
+  letter-spacing: 1px;
+  text-decoration: none;
+}
+.golvia-links { display: flex; gap: 16px; flex-wrap: wrap; }
+.golvia-links a {
+  color: var(--golvia-nav-text);
+  text-decoration: none;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+.golvia-links a:hover { color: var(--golvia-accent); }
+.golvia-user { display: flex; align-items: center; gap: 10px; color: var(--golvia-nav-text); font-size: 13px; }
+
+.golvia-card {
+  background: var(--golvia-surface);
+  border: 1px solid var(--golvia-border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+button {
+  font-family: var(--golvia-font-body);
+  font-size: 13px;
+  padding: 9px 18px;
+  border-radius: 5px;
+  border: 1px solid var(--golvia-border);
+  background: var(--golvia-surface);
+  color: var(--golvia-text);
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+button:hover { border-color: var(--golvia-accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.golvia-btn-primary {
+  background: var(--golvia-accent) !important;
+  border-color: var(--golvia-accent-dark) !important;
+  color: #1c1500 !important;
+  font-weight: 600;
+}
+.golvia-btn-primary:hover { background: var(--golvia-accent-dark) !important; }
+
+input, select, textarea {
+  font-family: var(--golvia-font-body);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--golvia-border);
+  background: #fff;
+  color: var(--golvia-text);
+  box-sizing: border-box;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--golvia-accent);
+  box-shadow: 0 0 0 2px var(--golvia-accent-tint);
+}
+
+table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+th {
+  text-align: left;
+  font-family: var(--golvia-font-body);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--golvia-accent-dark);
+  border-bottom: 2px solid var(--golvia-accent);
+  padding: 8px 10px;
+}
+td { padding: 8px 10px; border-bottom: 1px solid var(--golvia-border); font-size: 13px; }
+
+.golvia-badge {
+  display: inline-block;
+  background: var(--golvia-nav-bg);
+  color: var(--golvia-nav-text);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-family: var(--golvia-font-body);
+}
+
+.golvia-empty { color: var(--golvia-text-muted); font-style: italic; padding: 20px 0; }
+.golvia-error { color: var(--golvia-danger); font-size: 13px; }
+.golvia-success { color: var(--golvia-success); font-size: 13px; }
+
+.golvia-thumb {
+  width: 42px; height: 42px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--golvia-border);
+  background: #f0ece0;
+  vertical-align: middle;
+  display: inline-block;
+}
+.golvia-thumb-lg {
+  width: 160px; height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--golvia-border);
+  background: #f0ece0;
+  display: block;
+}
+
+.golvia-field { margin-bottom: 10px; }
+.golvia-field label { display: block; font-size: 12px; color: var(--golvia-text-muted); margin-bottom: 4px; }
+
+.golvia-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }

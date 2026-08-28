@@ -34,24 +34,21 @@ export default function App() {
   return (
     <BrowserRouter>
       <div>
-        <nav>
-          <Link to="/">Checkout</Link>
-          {' | '}
-          <Link to="/dashboard">Dashboard</Link>
-          {' | '}
-          <Link to="/products">Products</Link>
-          {' | '}
-          <Link to="/customers">Customers</Link>
-          {' | '}
-          <Link to="/invoices">Sales</Link>
-          {' | '}
-          <Link to="/marketing">Marketing</Link>
-          {' | '}
-          <Link to="/settings">Settings</Link>
-          {' — '}
-          <span>{user.username}</span>
-          {' '}
-          <button onClick={handleLogout}>Logout</button>
+        <nav className="golvia-nav">
+          <span className="golvia-brand">GOLVIA</span>
+          <div className="golvia-links">
+            <Link to="/">Checkout</Link>
+            <Link to="/dashboard">Dashboard</Link>
+            <Link to="/products">Products</Link>
+            <Link to="/customers">Customers</Link>
+            <Link to="/invoices">Sales</Link>
+            <Link to="/marketing">Marketing</Link>
+            <Link to="/settings">Settings</Link>
+          </div>
+          <div className="golvia-user">
+            <span>{user.username}</span>
+            <button onClick={handleLogout}>Logout</button>
+          </div>
         </nav>
         <Routes>
           <Route path="/" element={<Checkout />} />
