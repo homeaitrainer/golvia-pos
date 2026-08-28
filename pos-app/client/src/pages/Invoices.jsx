@@ -6,15 +6,24 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   useEffect(() => { apiClient.get('/invoices').then(setInvoices); }, []);
   return (
-    <div>
+    <div className="golvia-page">
       <h2>Sales History</h2>
-      <ul>
-        {invoices.map(i => (
-          <li key={i.id}>
-            <Link to={`/invoices/${i.id}/receipt`}>{i.invoice_number}</Link> — RM{i.total} — {i.status} — {new Date(i.created_at).toLocaleString()}
-          </li>
-        ))}
-      </ul>
+      <div className="golvia-card">
+        <table>
+          <thead><tr><th>Invoice</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>
+            {invoices.map(i => (
+              <tr key={i.id}>
+                <td><Link to={`/invoices/${i.id}/receipt`}>{i.invoice_number}</Link></td>
+                <td>RM{i.total}</td>
+                <td><span className="golvia-badge">{i.status}</span></td>
+                <td>{new Date(i.created_at).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {invoices.length === 0 && <p className="golvia-empty">No sales yet.</p>}
+      </div>
     </div>
   );
 }
