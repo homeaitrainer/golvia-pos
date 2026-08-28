@@ -8,6 +8,7 @@ function parseStockRows(rows) {
         category: String(row.category || '').replace(/\s*\(\d+\)\s*$/, '').trim(),
         brand: row.brand || '',
         description: row.product_description || '',
+        image_url: row.main_image || '',
         variants: [],
       });
     }
@@ -26,14 +27,14 @@ function importIntoDb(db, groupedProducts) {
   let productsCreated = 0;
   let variantsCreated = 0;
   const insertProduct = db.prepare(`
-    INSERT INTO products (name, category, description, brand) VALUES (?, ?, ?, ?)
+    INSERT INTO products (name, category, description, brand, image_url) VALUES (?, ?, ?, ?, ?)
   `);
   const insertVariant = db.prepare(`
     INSERT INTO product_variants (product_id, variant_label, sku, cost_price, sell_price, quantity) VALUES (?, ?, ?, ?, ?, ?)
   `);
   const tx = db.transaction(() => {
     for (const p of groupedProducts) {
-      const result = insertProduct.run(p.name, p.category, p.description, p.brand);
+      const result = insertProduct.run(p.name, p.category, p.description, p.brand, p.image_url || null);
       productsCreated++;
       for (const v of p.variants) {
         insertVariant.run(result.lastInsertRowid, v.variant_label, v.sku, v.cost_price, v.sell_price, v.quantity);
