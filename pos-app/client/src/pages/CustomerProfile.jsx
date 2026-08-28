@@ -55,19 +55,19 @@ export default function CustomerProfile() {
       {editing && form && (
         <div className="golvia-card">
           <h3 style={{ marginTop: 0 }}>Edit customer</h3>
-          <div className="golvia-field"><label>Name</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
-          <div className="golvia-field"><label>Email</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ width: '100%' }} /></div>
-          <div className="golvia-field"><label>Birthday</label><input type="date" value={form.birthday} onChange={e => setForm({ ...form, birthday: e.target.value })} /></div>
-          <div className="golvia-field"><label>State</label><input value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="edit-customer-name">Name</label><input id="edit-customer-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="edit-customer-email">Email</label><input id="edit-customer-email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="edit-customer-birthday">Birthday</label><input id="edit-customer-birthday" type="date" value={form.birthday} onChange={e => setForm({ ...form, birthday: e.target.value })} /></div>
+          <div className="golvia-field"><label htmlFor="edit-customer-state">State</label><input id="edit-customer-state" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} style={{ width: '100%' }} /></div>
           <div className="golvia-field">
-            <label>Gender</label>
-            <select value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}>
+            <label htmlFor="edit-customer-gender">Gender</label>
+            <select id="edit-customer-gender" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}>
               <option value="">Unspecified</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
             </select>
           </div>
-          <div className="golvia-field"><label>Notes</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="edit-customer-notes">Notes</label><textarea id="edit-customer-notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ width: '100%' }} /></div>
           <label style={{ display: 'block', marginBottom: 10 }}>
             <input type="checkbox" checked={form.whatsapp_consent} onChange={e => setForm({ ...form, whatsapp_consent: e.target.checked })} /> WhatsApp consent
           </label>

@@ -22,12 +22,12 @@ export default function Login({ onLoggedIn }) {
       <form onSubmit={handleSubmit} className="golvia-card" style={{ width: 320 }}>
         <h1 style={{ textAlign: 'center', color: 'var(--golvia-accent-dark)', letterSpacing: 2 }}>GOLVIA POS</h1>
         <div className="golvia-field">
-          <label>Username</label>
-          <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%' }} />
+          <label htmlFor="login-username">Username</label>
+          <input id="login-username" value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div className="golvia-field">
-          <label>Password</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={{ width: '100%' }} />
+          <label htmlFor="login-password">Password</label>
+          <input id="login-password" type="password" value={password} onChange={e => setPassword(e.target.value)} style={{ width: '100%' }} />
         </div>
         {error && <p className="golvia-error">{error}</p>}
         <button type="submit" className="golvia-btn-primary" style={{ width: '100%' }}>Log in</button>

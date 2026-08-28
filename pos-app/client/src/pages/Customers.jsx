@@ -37,20 +37,20 @@ export default function Customers() {
 
       <div className="golvia-card">
         <h3 style={{ marginTop: 0 }}>Add customer</h3>
-        <div className="golvia-field"><label>Name</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
-        <div className="golvia-field"><label>Phone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} style={{ width: '100%' }} /></div>
-        <div className="golvia-field"><label>Email</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ width: '100%' }} /></div>
-        <div className="golvia-field"><label>Birthday</label><input type="date" value={form.birthday} onChange={e => setForm({ ...form, birthday: e.target.value })} /></div>
-        <div className="golvia-field"><label>State</label><input value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} style={{ width: '100%' }} /></div>
+        <div className="golvia-field"><label htmlFor="customer-name">Name</label><input id="customer-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
+        <div className="golvia-field"><label htmlFor="customer-phone">Phone</label><input id="customer-phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} style={{ width: '100%' }} /></div>
+        <div className="golvia-field"><label htmlFor="customer-email">Email</label><input id="customer-email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ width: '100%' }} /></div>
+        <div className="golvia-field"><label htmlFor="customer-birthday">Birthday</label><input id="customer-birthday" type="date" value={form.birthday} onChange={e => setForm({ ...form, birthday: e.target.value })} /></div>
+        <div className="golvia-field"><label htmlFor="customer-state">State</label><input id="customer-state" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} style={{ width: '100%' }} /></div>
         <div className="golvia-field">
-          <label>Gender</label>
-          <select value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}>
+          <label htmlFor="customer-gender">Gender</label>
+          <select id="customer-gender" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}>
             <option value="">Unspecified</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
           </select>
         </div>
-        <div className="golvia-field"><label>Notes</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ width: '100%' }} /></div>
+        <div className="golvia-field"><label htmlFor="customer-notes">Notes</label><textarea id="customer-notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ width: '100%' }} /></div>
         <label style={{ display: 'block', marginBottom: 10 }}>
           <input type="checkbox" checked={form.whatsapp_consent} onChange={e => setForm({ ...form, whatsapp_consent: e.target.checked })} /> WhatsApp consent
         </label>

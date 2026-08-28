@@ -43,10 +43,10 @@ export default function Settings() {
 
       <div className="golvia-card">
         <h3 style={{ marginTop: 0 }}>Email (Gmail)</h3>
-        <div className="golvia-field"><label>Gmail address</label><input value={settings.gmail_address || ''} onChange={e => setSettings({ ...settings, gmail_address: e.target.value })} style={{ width: '100%' }} /></div>
+        <div className="golvia-field"><label htmlFor="settings-gmail-address">Gmail address</label><input id="settings-gmail-address" value={settings.gmail_address || ''} onChange={e => setSettings({ ...settings, gmail_address: e.target.value })} style={{ width: '100%' }} /></div>
         <div className="golvia-field">
-          <label>Gmail app password</label>
-          <input type="password" value={gmailAppPassword} placeholder="Leave blank to keep the current password" onChange={e => setGmailAppPassword(e.target.value)} style={{ width: '100%' }} />
+          <label htmlFor="settings-gmail-app-password">Gmail app password</label>
+          <input id="settings-gmail-app-password" type="password" value={gmailAppPassword} placeholder="Leave blank to keep the current password" onChange={e => setGmailAppPassword(e.target.value)} style={{ width: '100%' }} />
         </div>
         <button className="golvia-btn-primary" onClick={save}>Save</button>
       </div>

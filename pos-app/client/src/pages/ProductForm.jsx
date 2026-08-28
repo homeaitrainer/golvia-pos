@@ -52,11 +52,11 @@ export default function ProductForm() {
             : <div className="golvia-thumb-lg" />}
         </div>
         <div style={{ flex: 1 }}>
-          <div className="golvia-field"><label>Name</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
-          <div className="golvia-field"><label>Category</label><input value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} style={{ width: '100%' }} /></div>
-          <div className="golvia-field"><label>Brand</label><input value={form.brand || ''} onChange={e => setForm({ ...form, brand: e.target.value })} style={{ width: '100%' }} /></div>
-          <div className="golvia-field"><label>Image URL</label><input value={form.image_url || ''} onChange={e => setForm({ ...form, image_url: e.target.value })} style={{ width: '100%' }} /></div>
-          <div className="golvia-field"><label>Description</label><textarea value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="product-name">Name</label><input id="product-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="product-category">Category</label><input id="product-category" value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="product-brand">Brand</label><input id="product-brand" value={form.brand || ''} onChange={e => setForm({ ...form, brand: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="product-image-url">Image URL</label><input id="product-image-url" value={form.image_url || ''} onChange={e => setForm({ ...form, image_url: e.target.value })} style={{ width: '100%' }} /></div>
+          <div className="golvia-field"><label htmlFor="product-description">Description</label><textarea id="product-description" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} style={{ width: '100%' }} /></div>
         </div>
       </div>
 
