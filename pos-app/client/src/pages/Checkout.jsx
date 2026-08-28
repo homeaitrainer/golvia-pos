@@ -212,7 +212,8 @@ export default function Checkout() {
             </div>
             <label style={{ display: 'block', marginBottom: 10 }}>
               <input type="checkbox" checked={newCustomerForm.whatsapp_consent}
-                onChange={e => setNewCustomerForm({ ...newCustomerForm, whatsapp_consent: e.target.checked })} /> WhatsApp consent
+                onChange={e => setNewCustomerForm({ ...newCustomerForm, whatsapp_consent: e.target.checked })}
+                onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} /> WhatsApp consent
             </label>
             <button className="golvia-btn-primary" onClick={createCustomerInline}>Create &amp; use for this sale</button>
           </div>
