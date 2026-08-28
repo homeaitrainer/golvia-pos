@@ -16,7 +16,7 @@ export default function Products() {
       <h2>Products</h2>
       <div className="golvia-toolbar">
         <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); load(e.target.value); }} />
-        <Link to="/products/new"><button className="golvia-btn-primary">+ Add product</button></Link>
+        <Link to="/products/new" className="golvia-btn-primary">+ Add product</Link>
       </div>
       <table>
         <thead><tr><th></th><th>Name</th><th>Category</th><th>Variants</th></tr></thead>

@@ -60,7 +60,7 @@ h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
   font-size: 13px;
   letter-spacing: 0.5px;
 }
-.golvia-links a:hover { color: var(--golvia-accent); }
+.golvia-links a:hover { color: #ffffff; }
 .golvia-user { display: flex; align-items: center; gap: 10px; color: var(--golvia-nav-text); font-size: 13px; }
 
 .golvia-card {
@@ -88,10 +88,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .golvia-btn-primary {
   background: var(--golvia-accent) !important;
   border-color: var(--golvia-accent-dark) !important;
-  color: #1c1500 !important;
+  color: #0f2743 !important;
   font-weight: 600;
 }
 .golvia-btn-primary:hover { background: var(--golvia-accent-dark) !important; }
+
+a.golvia-btn-primary {
+  display: inline-block;
+  padding: 9px 18px;
+  border-radius: 5px;
+  text-decoration: none;
+  font-family: var(--golvia-font-body);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+}
 
 input, select, textarea {
   font-family: var(--golvia-font-body);
@@ -131,6 +141,13 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--golvia-border); font-size
   padding: 3px 9px;
   border-radius: 10px;
   font-family: var(--golvia-font-body);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.golvia-badge-refunded {
+  background: var(--golvia-danger);
+  color: #ffffff;
 }
 
 .golvia-empty { color: var(--golvia-text-muted); font-style: italic; padding: 20px 0; }
@@ -142,7 +159,7 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--golvia-border); font-size
   object-fit: cover;
   border-radius: 5px;
   border: 1px solid var(--golvia-border);
-  background: #f0ece0;
+  background: var(--golvia-border);
   vertical-align: middle;
   display: inline-block;
 }
@@ -151,7 +168,7 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--golvia-border); font-size
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--golvia-border);
-  background: #f0ece0;
+  background: var(--golvia-border);
   display: block;
 }
 
