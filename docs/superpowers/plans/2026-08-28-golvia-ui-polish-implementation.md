@@ -2,17 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Apply a consistent "Cream & Gold" branded visual design across every screen, add inline customer creation at checkout, redesign the printed receipt, display product images (captured from the stock spreadsheet), and fix the Marketing tab's confusing empty state.
+**Goal:** Apply a consistent teal/navy branded visual design (adapted from the Ari POS reference, with restrained GSAP motion) across every screen, add inline customer creation at checkout, redesign the printed receipt, display product images (captured from the stock spreadsheet), and fix the Marketing tab's confusing empty state.
 
 **Architecture:** A single shared stylesheet (`theme.css`) defines the design system (CSS custom properties + global element styling + a handful of utility classes: `.golvia-page`, `.golvia-card`, `.golvia-nav`, `.golvia-badge`, `.golvia-thumb`, `.golvia-empty`, `.golvia-error`/`.golvia-success`, `.golvia-field`, `.golvia-btn-primary`). Because it styles bare HTML elements (`button`, `input`, `table`, `h2`, etc.) globally rather than requiring every element to carry a new class, most pages get 80% of the visual change "for free"; each page task then adds the handful of structural classes (page wrapper, card grouping, primary button) and any page-specific additions (image thumbnails, badges, empty states). Two small backend changes support this: image URLs are captured on stock import (and backfilled into the already-imported catalog), and the invoice-detail endpoint gains the customer's membership tier so the receipt can show it.
 
-**Tech Stack:** React 18 (existing pages), plain CSS (no new dependency), Node.js/Express/better-sqlite3 (existing server, `node:test` for the two backend changes).
+**Tech Stack:** React 18 (existing pages), plain CSS + GSAP (new dependency, motion only), Node.js/Express/better-sqlite3 (existing server, `node:test` for the backend changes).
 
 ## Global Constraints
 
-- Palette: background `#faf6ec`, nav bar `#1c1c1c`, gold accent `#c9a227` (dark variant `#a6791f`), border/divider `#e6ddc0`, body text `#2a2a2a` — exact values from the approved mockup, do not substitute.
-- Typography: Georgia (or `'Times New Roman', serif` fallback) for headings/brand; `'Helvetica Neue', Arial, sans-serif` for body/data/forms.
-- No layout restructuring — this is a styling + two small feature additions pass. Do not rearrange navigation, rename routes, or change any business logic, API contract, or money calculation.
+- Palette (revised from an earlier cream/gold direction — adapted from the Ari POS reference site, palette/feel only, not a literal screen copy): background `#f4f7f8`, nav bar `#0f2743` (dark navy), accent `#14a38c` (teal, dark variant `#0e7d6b`, tint `#e3f6f2`), border/divider `#dbe4e6`, body text `#14213d` — exact values, do not substitute.
+- Typography: the system UI font stack (`'Segoe UI', system-ui, -apple-system, sans-serif`) for both headings and body — **deliberately not a web font**, since the app must render its base UI fully offline; headings are distinguished by weight (700), not by font family.
+- Motion: GSAP, used only for the three touches in Task 9 (page fade-in on navigation, cart-add flash, checkout success pulse) — kept short (150–250ms) and subtle. No other page should get animation beyond what Task 9 specifies.
+- No layout restructuring — this is a styling + motion + two small feature additions pass. Do not rearrange navigation, rename routes, or change any business logic, API contract, or money calculation.
 - Product images load directly from the spreadsheet's original web link — no local download/hosting.
 - No images on the printed/emailed receipt (user's explicit choice).
 - Every client (`pos-app/client`) task's verification is `npm run build` (this project has no React component test setup — matches the existing project convention of build-clean + manual browser verification for UI work). Every server (`pos-app/server`) task's verification is `node --test` (or `npm test`), following existing TDD patterns in that codebase.
@@ -25,6 +26,7 @@
 pos-app/
   client/src/
     theme.css                 (NEW — design system)
+    gsapMotion.js              (NEW — page fade-in, cart flash, success pulse)
     index.css                 (MODIFY — strip conflicting Vite-starter rules)
     main.jsx                  (MODIFY — import theme.css)
     App.jsx                   (MODIFY — restyle nav)
@@ -66,27 +68,27 @@ pos-app/
 - Modify: `pos-app/client/src/pages/Login.jsx`
 
 **Interfaces:**
-- Produces: CSS custom properties (`--golvia-bg`, `--golvia-nav-bg`, `--golvia-gold`, `--golvia-gold-dark`, `--golvia-gold-tint`, `--golvia-border`, `--golvia-text`, `--golvia-text-muted`, `--golvia-danger`, `--golvia-success`, `--golvia-font-heading`, `--golvia-font-body`) and utility classes (`.golvia-page`, `.golvia-card`, `.golvia-nav`, `.golvia-brand`, `.golvia-links`, `.golvia-user`, `.golvia-btn-primary`, `.golvia-badge`, `.golvia-empty`, `.golvia-error`, `.golvia-success`, `.golvia-field`, `.golvia-toolbar`, `.golvia-thumb`, `.golvia-thumb-lg`) that every later task in this plan uses by name.
+- Produces: CSS custom properties (`--golvia-bg`, `--golvia-nav-bg`, `--golvia-accent`, `--golvia-accent-dark`, `--golvia-accent-tint`, `--golvia-border`, `--golvia-text`, `--golvia-text-muted`, `--golvia-danger`, `--golvia-success`, `--golvia-font-heading`, `--golvia-font-body`) and utility classes (`.golvia-page`, `.golvia-card`, `.golvia-nav`, `.golvia-brand`, `.golvia-links`, `.golvia-user`, `.golvia-btn-primary`, `.golvia-badge`, `.golvia-empty`, `.golvia-error`, `.golvia-success`, `.golvia-field`, `.golvia-toolbar`, `.golvia-thumb`, `.golvia-thumb-lg`) that every later task in this plan uses by name.
 
 - [ ] **Step 1: Create the theme stylesheet**
 
 Create `pos-app/client/src/theme.css`:
 ```css
 :root {
-  --golvia-bg: #faf6ec;
-  --golvia-surface: #fffdf8;
-  --golvia-nav-bg: #1c1c1c;
-  --golvia-nav-text: #e8d9a8;
-  --golvia-gold: #c9a227;
-  --golvia-gold-dark: #a6791f;
-  --golvia-gold-tint: #fbf3dc;
-  --golvia-border: #e6ddc0;
-  --golvia-text: #2a2a2a;
-  --golvia-text-muted: #767066;
-  --golvia-danger: #b3261e;
-  --golvia-success: #2e7d32;
-  --golvia-font-heading: Georgia, 'Times New Roman', serif;
-  --golvia-font-body: 'Helvetica Neue', Arial, sans-serif;
+  --golvia-bg: #f4f7f8;
+  --golvia-surface: #ffffff;
+  --golvia-nav-bg: #0f2743;
+  --golvia-nav-text: #cfe3de;
+  --golvia-accent: #14a38c;
+  --golvia-accent-dark: #0e7d6b;
+  --golvia-accent-tint: #e3f6f2;
+  --golvia-border: #dbe4e6;
+  --golvia-text: #14213d;
+  --golvia-text-muted: #6b7785;
+  --golvia-danger: #c0392b;
+  --golvia-success: #1e8e5a;
+  --golvia-font-heading: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --golvia-font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
 body {
@@ -96,15 +98,16 @@ body {
   margin: 0;
 }
 
-a { color: var(--golvia-gold-dark); }
+a { color: var(--golvia-accent-dark); }
 
 h1, h2, h3 {
   font-family: var(--golvia-font-heading);
+  font-weight: 700;
   color: var(--golvia-text);
   margin: 0 0 12px;
 }
-h2 { font-size: 22px; letter-spacing: 0.5px; }
-h3 { font-size: 16px; color: var(--golvia-gold-dark); margin-top: 24px; }
+h2 { font-size: 22px; letter-spacing: 0.2px; }
+h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
 
 .golvia-page { max-width: 1000px; margin: 0 auto; padding: 28px 24px; box-sizing: border-box; }
 
@@ -116,13 +119,14 @@ h3 { font-size: 16px; color: var(--golvia-gold-dark); margin-top: 24px; }
   gap: 12px;
   background: var(--golvia-nav-bg);
   padding: 14px 24px;
-  border-bottom: 2px solid var(--golvia-gold);
+  border-bottom: 3px solid var(--golvia-accent);
 }
 .golvia-brand {
   font-family: var(--golvia-font-heading);
-  color: var(--golvia-gold);
+  font-weight: 700;
+  color: #ffffff;
   font-size: 20px;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   text-decoration: none;
 }
 .golvia-links { display: flex; gap: 16px; flex-wrap: wrap; }
@@ -132,7 +136,7 @@ h3 { font-size: 16px; color: var(--golvia-gold-dark); margin-top: 24px; }
   font-size: 13px;
   letter-spacing: 0.5px;
 }
-.golvia-links a:hover { color: var(--golvia-gold); }
+.golvia-links a:hover { color: var(--golvia-accent); }
 .golvia-user { display: flex; align-items: center; gap: 10px; color: var(--golvia-nav-text); font-size: 13px; }
 
 .golvia-card {
@@ -154,16 +158,16 @@ button {
   cursor: pointer;
   letter-spacing: 0.3px;
 }
-button:hover { border-color: var(--golvia-gold); }
+button:hover { border-color: var(--golvia-accent); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .golvia-btn-primary {
-  background: var(--golvia-gold) !important;
-  border-color: var(--golvia-gold-dark) !important;
+  background: var(--golvia-accent) !important;
+  border-color: var(--golvia-accent-dark) !important;
   color: #1c1500 !important;
   font-weight: 600;
 }
-.golvia-btn-primary:hover { background: var(--golvia-gold-dark) !important; }
+.golvia-btn-primary:hover { background: var(--golvia-accent-dark) !important; }
 
 input, select, textarea {
   font-family: var(--golvia-font-body);
@@ -177,8 +181,8 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: var(--golvia-gold);
-  box-shadow: 0 0 0 2px var(--golvia-gold-tint);
+  border-color: var(--golvia-accent);
+  box-shadow: 0 0 0 2px var(--golvia-accent-tint);
 }
 
 table { border-collapse: collapse; width: 100%; margin: 10px 0; }
@@ -188,8 +192,8 @@ th {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--golvia-gold-dark);
-  border-bottom: 2px solid var(--golvia-gold);
+  color: var(--golvia-accent-dark);
+  border-bottom: 2px solid var(--golvia-accent);
   padding: 8px 10px;
 }
 td { padding: 8px 10px; border-bottom: 1px solid var(--golvia-border); font-size: 13px; }
@@ -317,7 +321,7 @@ export default function Login({ onLoggedIn }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 100 }}>
       <form onSubmit={handleSubmit} className="golvia-card" style={{ width: 320 }}>
-        <h1 style={{ textAlign: 'center', color: 'var(--golvia-gold-dark)', letterSpacing: 2 }}>GOLVIA POS</h1>
+        <h1 style={{ textAlign: 'center', color: 'var(--golvia-accent-dark)', letterSpacing: 2 }}>GOLVIA POS</h1>
         <div className="golvia-field">
           <label>Username</label>
           <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%' }} />
@@ -343,7 +347,7 @@ Expected: builds cleanly, no errors.
 
 ```bash
 git add pos-app/client/src/theme.css pos-app/client/src/index.css pos-app/client/src/main.jsx pos-app/client/src/App.jsx pos-app/client/src/pages/Login.jsx
-git commit -m "feat: add GOLVIA cream & gold design system, restyle nav and login"
+git commit -m "feat: add GOLVIA teal/navy design system, restyle nav and login"
 ```
 
 ---
@@ -1028,11 +1032,11 @@ export default function InvoiceReceipt() {
       `}</style>
 
       <div className="receipt-printable golvia-card" style={{ maxWidth: 380, margin: '0 auto', fontFamily: 'var(--golvia-font-heading)' }}>
-        <div style={{ textAlign: 'center', letterSpacing: 3, fontSize: 22, color: 'var(--golvia-gold-dark)', fontWeight: 'bold' }}>GOLVIA</div>
+        <div style={{ textAlign: 'center', letterSpacing: 3, fontSize: 22, color: 'var(--golvia-accent-dark)', fontWeight: 'bold' }}>GOLVIA</div>
         <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--golvia-text-muted)', fontFamily: 'var(--golvia-font-body)', marginTop: 4, lineHeight: 1.5 }}>
           16 Jalan SC 1, Pusat Perindustrian Sungai Chua<br />43200 Kajang, Selangor, Malaysia
         </div>
-        <hr style={{ border: 'none', borderTop: '2px solid var(--golvia-gold)', margin: '12px 0' }} />
+        <hr style={{ border: 'none', borderTop: '2px solid var(--golvia-accent)', margin: '12px 0' }} />
 
         <div style={{ fontSize: 12, fontFamily: 'var(--golvia-font-body)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Invoice</span><span>{invoice.invoice_number}</span></div>
@@ -1073,7 +1077,7 @@ export default function InvoiceReceipt() {
         </div>
 
         {invoice.customer && (
-          <div style={{ background: 'var(--golvia-gold-tint)', border: '1px solid var(--golvia-border)', borderRadius: 4, padding: '8px 10px', marginTop: 12, fontSize: 11, fontFamily: 'var(--golvia-font-body)', color: 'var(--golvia-gold-dark)' }}>
+          <div style={{ background: 'var(--golvia-accent-tint)', border: '1px solid var(--golvia-border)', borderRadius: 4, padding: '8px 10px', marginTop: 12, fontSize: 11, fontFamily: 'var(--golvia-font-body)', color: 'var(--golvia-accent-dark)' }}>
             + {invoice.coins_earned} coins earned this visit
           </div>
         )}
@@ -1536,7 +1540,7 @@ export default function Dashboard() {
       <h2>Dashboard</h2>
 
       <div className="golvia-card">
-        <p style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--golvia-gold-dark)' }}>
+        <p style={{ fontSize: 20, fontWeight: 'bold', color: 'var(--golvia-accent-dark)' }}>
           Today's sales: RM{summary.todaySalesTotal.toFixed(2)}
         </p>
         <p>{summary.todayTransactionCount} transaction(s)</p>
@@ -1748,8 +1752,242 @@ git commit -m "feat: restyle marketing tab, add empty-state explanation"
 
 ---
 
+### Task 9: GSAP motion — page transitions, cart flash, checkout success pulse
+
+**Files:**
+- Create: `pos-app/client/src/gsapMotion.js`
+- Modify: `pos-app/client/src/App.jsx`
+- Modify: `pos-app/client/src/pages/Checkout.jsx`
+- Modify: `pos-app/client/package.json` (add `gsap` dependency)
+
+**Interfaces:**
+- Consumes: `.golvia-page` class (Task 1, present on every page's root element), the existing `App.jsx` nav markup (Task 1), the existing `Checkout.jsx` structure (Task 3 — `addVariantToCart`, `handleCheckout`, the Cart card `div`, the Complete Sale `button`).
+- Produces: `animatePageIn(selector = '.golvia-page') -> void` (fades/slides the current page's root element in — call on route change), `flashElement(el) -> void` (brief highlight-color flash on a DOM node — call when something is added), `successPulse(el, onComplete) -> void` (a short scale pulse, then calls `onComplete` — call before a success-driven navigation so the confirmation is visible first).
+
+- [ ] **Step 1: Install GSAP**
+
+Run: `cd pos-app/client && npm install gsap`
+
+- [ ] **Step 2: Create the motion helper module**
+
+Create `pos-app/client/src/gsapMotion.js`:
+```js
+import gsap from 'gsap';
+
+export function animatePageIn(selector = '.golvia-page') {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  gsap.fromTo(el, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.25, ease: 'power2.out' });
+}
+
+export function flashElement(el) {
+  if (!el) return;
+  gsap.fromTo(el, { backgroundColor: '#e3f6f2' }, { backgroundColor: '#ffffff', duration: 0.6, ease: 'power1.out' });
+}
+
+export function successPulse(el, onComplete) {
+  if (!el) { onComplete?.(); return; }
+  gsap.timeline({ onComplete })
+    .to(el, { scale: 1.06, duration: 0.12, ease: 'power1.out' })
+    .to(el, { scale: 1, duration: 0.18, ease: 'power1.in' });
+}
+```
+
+- [ ] **Step 3: Wire page fade-in into `App.jsx`**
+
+`useLocation()` only works inside `<BrowserRouter>`, so the nav+routes markup is extracted into a small `AppShell` child component that renders inside the router, letting it watch `location.pathname` and trigger the fade on every navigation. Replace `pos-app/client/src/App.jsx` in full:
+```jsx
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { apiClient } from './api/client';
+import { animatePageIn } from './gsapMotion';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Checkout from './pages/Checkout';
+import Products from './pages/Products';
+import ProductForm from './pages/ProductForm';
+import Customers from './pages/Customers';
+import CustomerProfile from './pages/CustomerProfile';
+import Invoices from './pages/Invoices';
+import InvoiceReceipt from './pages/InvoiceReceipt';
+import Marketing from './pages/Marketing';
+import Settings from './pages/Settings';
+
+function AppShell({ user, onLogout }) {
+  const location = useLocation();
+
+  useEffect(() => { animatePageIn(); }, [location.pathname]);
+
+  return (
+    <div>
+      <nav className="golvia-nav">
+        <span className="golvia-brand">GOLVIA</span>
+        <div className="golvia-links">
+          <Link to="/">Checkout</Link>
+          <Link to="/dashboard">Dashboard</Link>
+          <Link to="/products">Products</Link>
+          <Link to="/customers">Customers</Link>
+          <Link to="/invoices">Sales</Link>
+          <Link to="/marketing">Marketing</Link>
+          <Link to="/settings">Settings</Link>
+        </div>
+        <div className="golvia-user">
+          <span>{user.username}</span>
+          <button onClick={onLogout}>Logout</button>
+        </div>
+      </nav>
+      <Routes>
+        <Route path="/" element={<Checkout />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/products" element={<Products />} />
+        <Route path="/products/:id" element={<ProductForm />} />
+        <Route path="/customers" element={<Customers />} />
+        <Route path="/customers/:id" element={<CustomerProfile />} />
+        <Route path="/invoices" element={<Invoices />} />
+        <Route path="/invoices/:id/receipt" element={<InvoiceReceipt />} />
+        <Route path="/marketing" element={<Marketing />} />
+        <Route path="/settings" element={<Settings />} />
+      </Routes>
+    </div>
+  );
+}
+
+export default function App() {
+  const [user, setUser] = useState(undefined); // undefined = loading
+
+  useEffect(() => {
+    apiClient.get('/auth/me').then(setUser).catch(() => setUser(null));
+  }, []);
+
+  if (user === undefined) return <p>Loading...</p>;
+  if (user === null) return <Login onLoggedIn={setUser} />;
+
+  async function handleLogout() {
+    try {
+      await apiClient.post('/auth/logout');
+    } finally {
+      setUser(null);
+    }
+  }
+
+  return (
+    <BrowserRouter>
+      <AppShell user={user} onLogout={handleLogout} />
+    </BrowserRouter>
+  );
+}
+```
+
+- [ ] **Step 4: Add the cart-add flash and checkout success pulse to `Checkout.jsx`**
+
+Six small, precisely-anchored edits to the `Checkout.jsx` written in Task 3 (do not rewrite the whole file — apply each of these as a find-and-replace against the current file contents; each `OLD` block is unique in the file):
+
+Edit 1 — add the import:
+```
+OLD:
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { apiClient } from '../api/client';
+
+NEW:
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { apiClient } from '../api/client';
+import { flashElement, successPulse } from '../gsapMotion';
+```
+
+Edit 2 — add the two new refs:
+```
+OLD:
+  const scanRef = useRef(null);
+  const navigate = useNavigate();
+
+NEW:
+  const scanRef = useRef(null);
+  const cartCardRef = useRef(null);
+  const checkoutBtnRef = useRef(null);
+  const navigate = useNavigate();
+```
+
+Edit 3 — flash the cart when an item is added:
+```
+OLD:
+  function addVariantToCart(product, variant) {
+    setCart(prev => {
+      const existing = prev.find(i => i.variantId === variant.id);
+      if (existing) {
+        return prev.map(i => i.variantId === variant.id ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, {
+        variantId: variant.id, name: product.name, variantLabel: variant.variant_label,
+        unitPrice: variant.sell_price, quantity: 1, itemDiscount: 0,
+      }];
+    });
+  }
+
+NEW:
+  function addVariantToCart(product, variant) {
+    setCart(prev => {
+      const existing = prev.find(i => i.variantId === variant.id);
+      if (existing) {
+        return prev.map(i => i.variantId === variant.id ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, {
+        variantId: variant.id, name: product.name, variantLabel: variant.variant_label,
+        unitPrice: variant.sell_price, quantity: 1, itemDiscount: 0,
+      }];
+    });
+    flashElement(cartCardRef.current);
+  }
+```
+
+Edit 4 — pulse the button before navigating away on a successful sale:
+```
+OLD:
+      navigate(`/invoices/${invoice.id}/receipt`);
+
+NEW:
+      successPulse(checkoutBtnRef.current, () => navigate(`/invoices/${invoice.id}/receipt`));
+```
+
+Edit 5 — attach the ref to the Cart card:
+```
+OLD:
+      <div className="golvia-card">
+        <h3 style={{ marginTop: 0 }}>Cart</h3>
+        <table>
+
+NEW:
+      <div className="golvia-card" ref={cartCardRef}>
+        <h3 style={{ marginTop: 0 }}>Cart</h3>
+        <table>
+```
+
+Edit 6 — attach the ref to the Complete Sale button:
+```
+OLD:
+        <button className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
+
+NEW:
+        <button ref={checkoutBtnRef} className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
+```
+
+- [ ] **Step 5: Verify the build**
+
+Run: `cd pos-app/client && npm run build`
+Expected: builds cleanly, no errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add pos-app/client/src/gsapMotion.js pos-app/client/src/App.jsx pos-app/client/src/pages/Checkout.jsx pos-app/client/package.json pos-app/client/package-lock.json
+git commit -m "feat: add GSAP page transitions, cart-add flash, and checkout success pulse"
+```
+
+---
+
 ## Self-Review Notes
 
-- **Spec coverage:** §2 Visual design system (Task 1 + every page task applying its classes), §3 inline customer creation (Task 3), §4 receipt redesign + print fix (Task 4), §5 product images — capture, backfill, display in 3 locations (Tasks 2, 3, 5), §6 Marketing empty state (Task 8) are all covered.
+- **Spec coverage:** §2 Visual design system incl. the Ari-inspired palette revision and GSAP motion (Task 1 + every page task applying its classes + Task 9), §3 inline customer creation (Task 3), §4 receipt redesign + print fix (Task 4), §5 product images — capture, backfill, display in 3 locations (Tasks 2, 3, 5), §6 Marketing empty state (Task 8) are all covered.
 - **Type/interface consistency checked:** `theme.css`'s class names (`.golvia-page`, `.golvia-card`, `.golvia-btn-primary`, `.golvia-field`, `.golvia-badge`, `.golvia-empty`, `.golvia-error`, `.golvia-success`, `.golvia-thumb`, `.golvia-thumb-lg`, `.golvia-toolbar`) from Task 1 are used identically (same names, same expected markup shape) in every later task. `parseStockRows`'s new `image_url` field (Task 2) matches what Task 3/5 expect on `GET /api/products` responses (the route does `SELECT *`, so it flows through automatically — no route change needed for reads, only for the two write endpoints which already accepted `image_url` before this plan). `getInvoiceWithDetails`'s new `customer.tier` field (Task 4) matches exactly what the redesigned `InvoiceReceipt.jsx` reads (`invoice.customer.tier`).
 - **No placeholders:** every step contains complete, final file content or exact code — no "style this page nicely" without showing the actual markup/CSS.
