@@ -17,6 +17,8 @@ export default function Checkout() {
   const [cart, setCart] = useState([]); // {variantId, name, variantLabel, unitPrice, quantity, itemDiscount}
   const [phone, setPhone] = useState('');
   const [customer, setCustomer] = useState(null);
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', email: '', whatsapp_consent: false });
   const [lumpSumType, setLumpSumType] = useState('amount');
   const [lumpSumValue, setLumpSumValue] = useState(0);
   const [coinsToRedeem, setCoinsToRedeem] = useState(0);
@@ -66,10 +68,27 @@ export default function Checkout() {
       const c = await apiClient.get(`/customers/by-phone/${encodeURIComponent(phone)}`);
       setCustomer(c);
       setSelectedVoucherId('');
+      setShowNewCustomerForm(false);
     } catch {
       setCustomer(null);
       setSelectedVoucherId('');
-      setError('Customer not found — you can create one from the Customers page, or check out as guest.');
+      setError('Customer not found — use "+ New customer" below to add them, or check out as guest.');
+    }
+  }
+
+  async function createCustomerInline() {
+    setError('');
+    try {
+      const c = await apiClient.post('/customers', newCustomerForm);
+      setCustomer({ ...c, vouchers: [] }); // a brand-new customer has no vouchers yet
+      setPhone(c.phone);
+      setSelectedVoucherId('');
+      setShowNewCustomerForm(false);
+      setNewCustomerForm({ name: '', phone: '', email: '', whatsapp_consent: false });
+    } catch (err) {
+      setError(err.data?.error === 'PHONE_EXISTS'
+        ? 'A customer with this phone number already exists — try "Look up" instead.'
+        : 'Could not create customer.');
     }
   }
 
@@ -106,53 +125,102 @@ export default function Checkout() {
   }
 
   return (
-    <div>
+    <div className="golvia-page">
       <h2>Checkout</h2>
-      <input ref={scanRef} placeholder="Scan barcode / SKU here" value={scanInput}
-        onChange={e => setScanInput(e.target.value)} onKeyDown={handleScan}
-        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
-      <input placeholder="Search products" value={search} onChange={e => runSearch(e.target.value)}
-        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
-      <ul>
-        {results.map(p => (
-          <li key={p.id}>
-            {p.name}
-            {p.variants.map(v => (
-              <button key={v.id} onClick={() => addVariantToCart(p, v)}>
-                {v.variant_label} — RM{v.sell_price} (add)
-              </button>
+
+      <div className="golvia-card">
+        <div className="golvia-toolbar">
+          <input ref={scanRef} placeholder="Scan barcode / SKU here" value={scanInput}
+            onChange={e => setScanInput(e.target.value)} onKeyDown={handleScan}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
+          <input placeholder="Search products" value={search} onChange={e => runSearch(e.target.value)}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
+        </div>
+        {results.length > 0 && (
+          <table>
+            <tbody>
+              {results.map(p => (
+                <tr key={p.id}>
+                  <td style={{ width: 50 }}>
+                    {p.image_url ? <img className="golvia-thumb" src={p.image_url} alt="" /> : <span className="golvia-thumb" />}
+                  </td>
+                  <td>{p.name}</td>
+                  <td>
+                    {p.variants.map(v => (
+                      <button key={v.id} onClick={() => addVariantToCart(p, v)} style={{ marginRight: 6 }}>
+                        {v.variant_label} — RM{v.sell_price} (add)
+                      </button>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="golvia-card">
+        <h3 style={{ marginTop: 0 }}>Cart</h3>
+        <table>
+          <tbody>
+            {cart.map(i => (
+              <tr key={i.variantId}>
+                <td>{i.name} ({i.variantLabel})</td>
+                <td>x{i.quantity}</td>
+                <td>RM{i.unitPrice}</td>
+                <td>
+                  Discount RM <input type="number" min="0" value={i.itemDiscount}
+                    onChange={e => updateItemDiscount(i.variantId, e.target.value)}
+                    onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: 60 }} />
+                </td>
+                <td><button onClick={() => removeItem(i.variantId)}>Remove</button></td>
+              </tr>
             ))}
-          </li>
-        ))}
-      </ul>
+          </tbody>
+        </table>
+      </div>
 
-      <h3>Cart</h3>
-      <table>
-        <tbody>
-          {cart.map(i => (
-            <tr key={i.variantId}>
-              <td>{i.name} ({i.variantLabel})</td>
-              <td>x{i.quantity}</td>
-              <td>RM{i.unitPrice}</td>
-              <td>
-                Discount RM <input type="number" min="0" value={i.itemDiscount}
-                  onChange={e => updateItemDiscount(i.variantId, e.target.value)}
-                  onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: 60 }} />
-              </td>
-              <td><button onClick={() => removeItem(i.variantId)}>Remove</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="golvia-card">
+        <h3 style={{ marginTop: 0 }}>Customer</h3>
+        <div className="golvia-toolbar">
+          <input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
+          <button onClick={lookupCustomer}>Look up</button>
+          {!customer && <button onClick={() => setShowNewCustomerForm(s => !s)}>{showNewCustomerForm ? 'Cancel' : '+ New customer'}</button>}
+        </div>
 
-      <h3>Customer</h3>
-      <input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)}
-        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
-      <button onClick={lookupCustomer}>Look up</button>
-      {customer && <p>{customer.name} — {customer.membership.tier} tier, {customer.membership.current_coin_balance} coins</p>}
-      {customer && customer.vouchers && customer.vouchers.length > 0 && (
-        <div>
-          <label>Voucher:{' '}
+        {customer && (
+          <p>{customer.name} — <span className="golvia-badge">{customer.membership.tier}</span> {customer.membership.current_coin_balance} coins</p>
+        )}
+
+        {!customer && showNewCustomerForm && (
+          <div style={{ borderTop: '1px solid var(--golvia-border)', paddingTop: 12, marginTop: 8 }}>
+            <div className="golvia-field">
+              <label>Name</label>
+              <input value={newCustomerForm.name} onChange={e => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
+                onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: '100%' }} />
+            </div>
+            <div className="golvia-field">
+              <label>Phone</label>
+              <input value={newCustomerForm.phone} onChange={e => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: '100%' }} />
+            </div>
+            <div className="golvia-field">
+              <label>Email (optional)</label>
+              <input value={newCustomerForm.email} onChange={e => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: '100%' }} />
+            </div>
+            <label style={{ display: 'block', marginBottom: 10 }}>
+              <input type="checkbox" checked={newCustomerForm.whatsapp_consent}
+                onChange={e => setNewCustomerForm({ ...newCustomerForm, whatsapp_consent: e.target.checked })} /> WhatsApp consent
+            </label>
+            <button className="golvia-btn-primary" onClick={createCustomerInline}>Create &amp; use for this sale</button>
+          </div>
+        )}
+
+        {customer && customer.vouchers && customer.vouchers.length > 0 && (
+          <div className="golvia-field">
+            <label>Voucher</label>
             <select value={selectedVoucherId} onChange={e => setSelectedVoucherId(e.target.value)}
               onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
               <option value="">None</option>
@@ -162,38 +230,41 @@ export default function Checkout() {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
+        )}
+
+        {customer && (
+          <div className="golvia-field">
+            <label>Redeem coins</label>
+            <input type="number" min="0" step="1" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
+              onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
+          </div>
+        )}
+      </div>
+
+      <div className="golvia-card">
+        <h3 style={{ marginTop: 0 }}>Discounts &amp; Payment</h3>
+        <div className="golvia-toolbar">
+          <select value={lumpSumType} onChange={e => setLumpSumType(e.target.value)}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
+            <option value="amount">RM amount</option>
+            <option value="percent">%</option>
+          </select>
+          <input type="number" value={lumpSumValue} onChange={e => setLumpSumValue(e.target.value)}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} placeholder="Lump-sum discount" />
+          <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
+            <option>Cash</option>
+            <option>DuitNow/QR</option>
+            <option>Bank Transfer</option>
+            <option>E-wallet</option>
+          </select>
         </div>
-      )}
 
-      <h3>Discounts</h3>
-      <select value={lumpSumType} onChange={e => setLumpSumType(e.target.value)}
-        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
-        <option value="amount">RM amount</option>
-        <option value="percent">%</option>
-      </select>
-      <input type="number" value={lumpSumValue} onChange={e => setLumpSumValue(e.target.value)}
-        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
-
-      {customer && (
-        <div>
-          <label>Redeem coins: <input type="number" min="0" step="1" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
-            onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} /></label>
-        </div>
-      )}
-
-      <h3>Payment</h3>
-      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
-        onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
-        <option>Cash</option>
-        <option>DuitNow/QR</option>
-        <option>Bank Transfer</option>
-        <option>E-wallet</option>
-      </select>
-
-      <p>Subtotal: RM{subtotal.toFixed(2)}</p>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      <button onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
+        <p style={{ fontSize: 18, fontWeight: 'bold' }}>Subtotal: RM{subtotal.toFixed(2)}</p>
+        {error && <p className="golvia-error">{error}</p>}
+        <button className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
+      </div>
     </div>
   );
 }
