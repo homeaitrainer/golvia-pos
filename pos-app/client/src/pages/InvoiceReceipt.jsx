@@ -86,9 +86,10 @@ export default function InvoiceReceipt() {
           .receipt-printable, .receipt-printable * { visibility: visible; }
           .receipt-printable {
             position: absolute; left: 0; top: 0;
-            width: 100%; max-width: 128mm; min-height: 0;
+            width: 100% !important; max-width: 128mm !important; min-height: 0 !important;
             box-sizing: border-box; padding: 0 !important; border: none !important; box-shadow: none !important;
           }
+          .receipt-printable button { display: none; }
         }
       `}</style>
 
@@ -118,7 +119,7 @@ export default function InvoiceReceipt() {
               <tr key={i.id}>
                 <td>{i.product_name} ({i.variant_label})</td>
                 <td>{i.quantity}</td>
-                <td>RM{i.unit_price}</td>
+                <td>RM{(i.unit_price * i.quantity).toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
