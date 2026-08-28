@@ -23,26 +23,50 @@ look. This spec covers all four:
 
 ## 2. Visual Design System
 
-**Palette** (confirmed via mockup review — "Cream & Gold" direction):
-- Background: warm cream/off-white (`#faf6ec`)
-- Nav bar: near-black (`#1c1c1c`), gold accent text (`#c9a227` / `#e8d9a8`)
-- Body text: dark charcoal (`#2a2a2a`)
-- Accent/CTA: gold (`#c9a227`), with a black-text-on-gold primary button style
-- Borders/dividers: soft gold-tinted grey (`#e6ddc0`)
+**Palette** (revised — adapted from the Ari POS reference the user pointed
+to; superseded the earlier "Cream & Gold" mockup direction before any code
+was written against it):
+- Background: soft cool white/grey (`#f4f7f8`)
+- Nav bar: dark navy (`#0f2743`) — matches Ari's heading color, gives the
+  persistent nav bar the weight of professional business software
+- Primary accent (buttons, badges, highlights): teal (`#14a38c`), matching
+  Ari's call-to-action color, with a darker hover shade (`#0e7d6b`) and a
+  light tint (`#e3f6f2`) for highlight boxes
+- Body text: dark navy-grey (`#14213d`)
+- Borders/dividers: soft cool grey (`#dbe4e6`)
 
-**Typography:** Georgia (or a similar serif) for headings and the GOLVIA
-wordmark; a clean sans-serif (system font stack) for body text, tables, and
-form inputs — matches the mockup's split between "branded" and "readable
-for data entry."
+Ari's own marketing page was reviewed directly (its actual in-app
+screens weren't available to reference — the page only shows marketing
+styling), and the user confirmed adapting the palette/feel rather than
+copying any specific screen layout.
+
+**Typography:** the system UI font stack (`'Segoe UI', system-ui,
+-apple-system, sans-serif`) for both headings and body text, with bold
+weight distinguishing headings — **deliberately not a web font**, even
+though Ari's own site uses one. This POS is designed to run fully offline
+except for WhatsApp/email (§2 of the original design), and an imported web
+font would either fail silently or delay first paint the moment the shop's
+internet drops. A system font keeps the same clean, modern software look
+without adding an internet dependency to the base UI.
+
+**Motion:** a small set of restrained GSAP animations (page fade-in on
+navigation, a brief highlight flash when an item is added to the cart, a
+short success animation on "Complete Sale" before navigating to the
+receipt). Kept deliberately subtle and fast (150–250ms) — this is a tool
+staff use all day, not a marketing page, so motion should confirm actions
+without slowing anyone down.
 
 **Implementation approach:** a single shared stylesheet (`theme.css`,
-imported once in `main.jsx` or `App.jsx`) defining CSS custom properties
-for the palette plus reusable classes: `.btn` / `.btn-primary`, `.card`,
-`.table`, `.nav`, `.input`, `.badge`, `.page` (max-width content wrapper).
+imported once in `main.jsx`) defining CSS custom properties for the
+palette plus reusable classes: `.golvia-btn-primary`, `.golvia-card`,
+`.golvia-nav`, `.golvia-badge`, `.golvia-page` (max-width content
+wrapper), `.golvia-field`, `.golvia-thumb`/`.golvia-thumb-lg`,
+`.golvia-empty`, `.golvia-error`/`.golvia-success`, `.golvia-toolbar`.
 Every existing page (`Login`, `Checkout`, `Dashboard`, `Products`,
 `ProductForm`, `Customers`, `CustomerProfile`, `Invoices`, `InvoiceReceipt`,
 `Marketing`, `Settings`) is updated to use these shared classes instead of
-bare unstyled HTML elements. This is a styling pass — no layout
+bare unstyled HTML elements, plus a small GSAP helper module for the three
+motion touches above. This is a styling + motion pass — no layout
 restructuring, no new pages, no behavior changes to any page not
 separately called out below.
 
