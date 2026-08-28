@@ -15,7 +15,8 @@ function getInvoiceWithDetails(db, invoiceId) {
     WHERE ii.invoice_id = ?
   `).all(invoiceId);
   const customer = invoice.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id) : null;
-  return { ...invoice, items, customer };
+  const membership = customer ? db.prepare('SELECT tier FROM membership_accounts WHERE customer_id = ?').get(customer.id) : null;
+  return { ...invoice, items, customer: customer ? { ...customer, tier: membership ? membership.tier : null } : null };
 }
 
 function buildReceiptHtml(invoice) {

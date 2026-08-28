@@ -190,3 +190,21 @@ test('email-receipt for a customer with an email on file returns 502 EMAIL_SEND_
 
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('GET /invoices/:id includes the customer\'s membership tier', async () => {
+  const { agent, db, tmp } = await setup();
+  db.prepare(`INSERT INTO customers (id, name, phone) VALUES (1, 'Alice', '0123456789')`).run();
+  db.prepare(`INSERT INTO membership_accounts (customer_id, lifetime_coins, current_coin_balance, tier) VALUES (1, 4000, 4000, 'Silver')`).run();
+
+  const checkout = await agent.post('/api/invoices').send({
+    customerId: 1,
+    items: [{ variantId: 1, quantity: 1, unitPrice: 300, itemDiscount: 0 }],
+    lumpSumDiscount: null, coinsToRedeem: 0, paymentMethod: 'Cash',
+  });
+
+  const detail = await agent.get(`/api/invoices/${checkout.body.id}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.customer.tier, 'Silver');
+
+  db.close(); fs.unlinkSync(tmp);
+});
