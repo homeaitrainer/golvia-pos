@@ -26,6 +26,7 @@ export default function Checkout() {
   const [selectedVoucherId, setSelectedVoucherId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const scanRef = useRef(null);
   const cartCardRef = useRef(null);
   const checkoutBtnRef = useRef(null);
@@ -72,21 +73,28 @@ export default function Checkout() {
       const c = await apiClient.get(`/customers/by-phone/${encodeURIComponent(phone)}`);
       setCustomer(c);
       setSelectedVoucherId('');
+      setCoinsToRedeem(0);
       setShowNewCustomerForm(false);
     } catch {
       setCustomer(null);
       setSelectedVoucherId('');
+      setCoinsToRedeem(0);
       setError('Customer not found — use "+ New customer" below to add them, or check out as guest.');
     }
   }
 
   async function createCustomerInline() {
+    if (!newCustomerForm.name.trim() || !newCustomerForm.phone.trim()) {
+      setError('Name and phone are required to create a customer.');
+      return;
+    }
     setError('');
     try {
       const c = await apiClient.post('/customers', newCustomerForm);
       setCustomer({ ...c, vouchers: [] }); // a brand-new customer has no vouchers yet
       setPhone(c.phone);
       setSelectedVoucherId('');
+      setCoinsToRedeem(0);
       setShowNewCustomerForm(false);
       setNewCustomerForm({ name: '', phone: '', email: '', whatsapp_consent: false });
     } catch (err) {
@@ -107,6 +115,8 @@ export default function Checkout() {
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
 
   async function handleCheckout() {
+    if (submitting) return;
+    setSubmitting(true);
     setError('');
     try {
       const invoice = await apiClient.post('/invoices', {
@@ -119,6 +129,7 @@ export default function Checkout() {
       });
       successPulse(checkoutBtnRef.current, () => navigate(`/invoices/${invoice.id}/receipt`));
     } catch (err) {
+      setSubmitting(false);
       setError(err.data?.error === 'INSUFFICIENT_STOCK' ? 'Not enough stock for one or more items.' :
                 err.data?.error === 'INSUFFICIENT_COINS' ? 'Customer does not have enough coins.' :
                 err.data?.error === 'VOUCHER_NO_VALUE' ? 'This voucher has no value left to apply — the cart total is already RM0 from other discounts or coin redemption. Reduce a discount or the coins redeemed to use this voucher.' :
@@ -187,10 +198,10 @@ export default function Checkout() {
       <div className="golvia-card">
         <h3 style={{ marginTop: 0 }}>Customer</h3>
         <div className="golvia-toolbar">
-          <input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)}
+          <input id="checkout-lookup-phone" placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)}
             onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
           <button onClick={lookupCustomer}>Look up</button>
-          {!customer && <button onClick={() => setShowNewCustomerForm(s => !s)}>{showNewCustomerForm ? 'Cancel' : '+ New customer'}</button>}
+          {!customer && <button onClick={() => { setShowNewCustomerForm(s => !s); if (!showNewCustomerForm) setNewCustomerForm(f => ({ ...f, phone })); }}>{showNewCustomerForm ? 'Cancel' : '+ New customer'}</button>}
         </div>
 
         {customer && (
@@ -200,18 +211,18 @@ export default function Checkout() {
         {!customer && showNewCustomerForm && (
           <div style={{ borderTop: '1px solid var(--golvia-border)', paddingTop: 12, marginTop: 8 }}>
             <div className="golvia-field">
-              <label>Name</label>
-              <input value={newCustomerForm.name} onChange={e => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
+              <label htmlFor="new-customer-name">Name</label>
+              <input id="new-customer-name" value={newCustomerForm.name} onChange={e => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
                 onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: '100%' }} />
             </div>
             <div className="golvia-field">
-              <label>Phone</label>
-              <input value={newCustomerForm.phone} onChange={e => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+              <label htmlFor="new-customer-phone">Phone</label>
+              <input id="new-customer-phone" value={newCustomerForm.phone} onChange={e => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
                 onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: '100%' }} />
             </div>
             <div className="golvia-field">
-              <label>Email (optional)</label>
-              <input value={newCustomerForm.email} onChange={e => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+              <label htmlFor="new-customer-email">Email (optional)</label>
+              <input id="new-customer-email" value={newCustomerForm.email} onChange={e => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
                 onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} style={{ width: '100%' }} />
             </div>
             <label style={{ display: 'block', marginBottom: 10 }}>
@@ -225,8 +236,8 @@ export default function Checkout() {
 
         {customer && customer.vouchers && customer.vouchers.length > 0 && (
           <div className="golvia-field">
-            <label>Voucher</label>
-            <select value={selectedVoucherId} onChange={e => setSelectedVoucherId(e.target.value)}
+            <label htmlFor="checkout-voucher">Voucher</label>
+            <select id="checkout-voucher" value={selectedVoucherId} onChange={e => setSelectedVoucherId(e.target.value)}
               onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)}>
               <option value="">None</option>
               {customer.vouchers.map(v => (
@@ -240,8 +251,8 @@ export default function Checkout() {
 
         {customer && (
           <div className="golvia-field">
-            <label>Redeem coins</label>
-            <input type="number" min="0" step="1" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
+            <label htmlFor="checkout-redeem-coins">Redeem coins</label>
+            <input id="checkout-redeem-coins" type="number" min="0" step="1" value={coinsToRedeem} onChange={e => setCoinsToRedeem(e.target.value)}
               onBlur={(e) => refocusScanUnlessMovingToField(e, scanRef)} />
           </div>
         )}
@@ -268,7 +279,7 @@ export default function Checkout() {
 
         <p style={{ fontSize: 18, fontWeight: 'bold' }}>Subtotal: RM{subtotal.toFixed(2)}</p>
         {error && <p className="golvia-error">{error}</p>}
-        <button ref={checkoutBtnRef} className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0}>Complete Sale</button>
+        <button ref={checkoutBtnRef} className="golvia-btn-primary" onClick={handleCheckout} disabled={cart.length === 0 || submitting}>Complete Sale</button>
       </div>
     </div>
   );
