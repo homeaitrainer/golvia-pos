@@ -9,10 +9,20 @@ const { isBirthdayToday } = require('../services/voucherEngine');
 // 8 hours of every local day. Converting the local midnight boundaries to their own ISO strings
 // lets a plain string range comparison (`created_at >= start AND created_at < end`) work
 // correctly against the stored UTC timestamps.
-function localDayBoundaries(now) {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-  return { startIso: start.toISOString(), endIso: end.toISOString() };
+// `offsetDays` shifts the window whole local days relative to `now` (0 = today, -1 = yesterday);
+// passing it through the Date constructor's day argument handles month and year rollover for
+// free. `start` is returned as a Date so callers can format a label from its LOCAL components --
+// formatting from toISOString() would re-introduce the very UTC/local drift described above.
+function localDayBoundaries(now, offsetDays = 0) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offsetDays, 0, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offsetDays + 1, 0, 0, 0, 0);
+  return { startIso: start.toISOString(), endIso: end.toISOString(), start };
+}
+
+function localDateString(date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function dashboardRouter(db, now = () => new Date()) {
@@ -53,6 +63,31 @@ function dashboardRouter(db, now = () => new Date()) {
       lowStockVariants,
       upcomingBirthdays,
     });
+  });
+
+  // Net sales per local day for the last 7 days (oldest first), for the dashboard chart.
+  // Same net-of-refunds definition as /summary above: a refund reduces the total for the day
+  // the REFUND happened, not the day the original invoice was raised.
+  router.get('/sales-trend', (req, res) => {
+    const current = now();
+    const invoiceStmt = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total
+      FROM invoices WHERE created_at >= ? AND created_at < ?
+    `);
+    const refundStmt = db.prepare(`
+      SELECT COALESCE(SUM(refund_amount), 0) as total
+      FROM refunds WHERE created_at >= ? AND created_at < ?
+    `);
+
+    const days = [];
+    for (let offset = -6; offset <= 0; offset++) {
+      const { startIso, endIso, start } = localDayBoundaries(current, offset);
+      const invoices = invoiceStmt.get(startIso, endIso);
+      const refunds = refundStmt.get(startIso, endIso);
+      days.push({ date: localDateString(start), total: invoices.total - refunds.total });
+    }
+
+    res.json(days);
   });
 
   return router;

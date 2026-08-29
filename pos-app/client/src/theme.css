@@ -13,6 +13,18 @@
   --golvia-success: #1e8e5a;
   --golvia-font-heading: 'Segoe UI', system-ui, -apple-system, sans-serif;
   --golvia-font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  --golvia-sidebar-w: 220px;
+  --golvia-shadow: 0 1px 3px rgba(15, 39, 67, 0.06);
+
+  --golvia-tint-teal: #e3f6f2;
+  --golvia-ink-teal: #0e7d6b;
+  --golvia-tint-blue: #e6f0fb;
+  --golvia-ink-blue: #2563a8;
+  --golvia-tint-amber: #fdf1dd;
+  --golvia-ink-amber: #a8710f;
+  --golvia-tint-purple: #efe9fb;
+  --golvia-ink-purple: #6741b5;
 }
 
 body {
@@ -33,35 +45,150 @@ h1, h2, h3 {
 h2 { font-size: 22px; letter-spacing: 0.2px; }
 h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
 
-.golvia-page { max-width: 1000px; margin: 0 auto; padding: 28px 24px; box-sizing: border-box; }
+.golvia-page { max-width: 1200px; margin: 0; padding: 24px; box-sizing: border-box; }
 
-.golvia-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
+/* ---- App shell: fixed sidebar + scrolling content column ---- */
+
+.golvia-shell { display: flex; min-height: 100vh; }
+
+.golvia-sidebar {
+  width: var(--golvia-sidebar-w);
+  flex-shrink: 0;
   background: var(--golvia-nav-bg);
-  padding: 14px 24px;
-  border-bottom: 3px solid var(--golvia-accent);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0;
+  gap: 4px;
 }
+
 .golvia-brand {
   font-family: var(--golvia-font-heading);
   font-weight: 700;
   color: #ffffff;
   font-size: 20px;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
+  padding: 0 20px 20px;
   text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.golvia-links { display: flex; gap: 16px; flex-wrap: wrap; }
-.golvia-links a {
+
+.golvia-navitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
   color: var(--golvia-nav-text);
   text-decoration: none;
-  font-size: 13px;
-  letter-spacing: 0.5px;
+  font-size: 14px;
+  border-left: 3px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.golvia-links a:hover { color: #ffffff; }
-.golvia-user { display: flex; align-items: center; gap: 10px; color: var(--golvia-nav-text); font-size: 13px; }
+.golvia-navitem:hover { background: rgba(255, 255, 255, 0.06); color: #ffffff; }
+.golvia-navitem.active {
+  background: rgba(20, 163, 140, 0.16);
+  border-left-color: var(--golvia-accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.golvia-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.golvia-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--golvia-surface);
+  border-bottom: 1px solid var(--golvia-border);
+  padding: 14px 24px;
+}
+.golvia-topbar-title {
+  font-family: var(--golvia-font-heading);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--golvia-text);
+}
+.golvia-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--golvia-text-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  :root { --golvia-sidebar-w: 60px; }
+  .golvia-brand { font-size: 0; padding: 0 0 20px; text-align: center; }
+  .golvia-brand::first-letter { font-size: 20px; }
+  .golvia-navitem { justify-content: center; padding: 12px 0; gap: 0; font-size: 0; }
+}
+
+/* ---- Stat cards ---- */
+
+.golvia-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.golvia-stat {
+  background: var(--golvia-surface);
+  border: 1px solid var(--golvia-border);
+  border-radius: 10px;
+  box-shadow: var(--golvia-shadow);
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.golvia-stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.golvia-stat-value {
+  font-family: var(--golvia-font-heading);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--golvia-text);
+}
+.golvia-stat-label { font-size: 12px; color: var(--golvia-text-muted); margin-top: 2px; }
+
+/* ---- 7-day sales bar chart (plain CSS, no charting library) ---- */
+
+.golvia-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 160px;
+  padding-top: 10px;
+}
+.golvia-chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 6px;
+}
+.golvia-chart-bar {
+  width: 100%;
+  max-width: 46px;
+  background: var(--golvia-accent);
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+  transition: background 0.15s;
+}
+.golvia-chart-col:hover .golvia-chart-bar { background: var(--golvia-accent-dark); }
+.golvia-chart-label { font-size: 11px; color: var(--golvia-text-muted); }
 
 .golvia-card {
   background: var(--golvia-surface);

@@ -83,6 +83,9 @@ export default function InvoiceReceipt() {
         @media print {
           @page { size: A5; margin: 10mm; }
           body * { visibility: hidden; }
+          /* visibility:hidden still reserves layout space, and the sidebar is a 220px flex
+             item -- display:none removes it from the print layout entirely. */
+          .golvia-sidebar, .golvia-topbar { display: none !important; }
           .receipt-printable, .receipt-printable * { visibility: visible; }
           .receipt-printable {
             position: absolute; left: 0; top: 0;

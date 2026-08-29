@@ -122,6 +122,74 @@ test('a refund issued on a later day against an older invoice reduces THAT LATER
   db.close(); fs.unlinkSync(tmp);
 });
 
+test('sales-trend returns 7 local days, oldest first, ending with today', async () => {
+  const { db, tmp, app } = setup();
+  db.prepare(`
+    INSERT INTO invoices (invoice_number, subtotal, total, payment_method, created_at)
+    VALUES ('INV-2026-0001', 300, 300, 'Cash', ?)
+  `).run(FIXED_NOW.toISOString()); // today, Aug 27
+  db.prepare(`
+    INSERT INTO invoices (invoice_number, subtotal, total, payment_method, created_at)
+    VALUES ('INV-2026-0002', 120, 120, 'Cash', ?)
+  `).run(new Date(2026, 7, 24, 11, 0, 0).toISOString()); // Aug 24
+
+  const agent = await loginAgent(app);
+  const res = await agent.get('/api/dashboard/sales-trend');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.length, 7);
+  assert.equal(res.body[0].date, '2026-08-21'); // oldest = today - 6
+  assert.equal(res.body[6].date, '2026-08-27'); // newest = today
+  assert.equal(res.body[6].total, 300);
+  assert.equal(res.body[3].date, '2026-08-24');
+  assert.equal(res.body[3].total, 120);
+  assert.equal(res.body[1].total, 0); // a day with no activity reports 0, not a gap
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('sales-trend subtracts a refund from the day the refund happened, not the invoice\'s day', async () => {
+  const { db, tmp, app } = setup();
+  const result = db.prepare(`
+    INSERT INTO invoices (invoice_number, subtotal, total, payment_method, created_at)
+    VALUES ('INV-2026-0001', 300, 300, 'Cash', ?)
+  `).run(new Date(2026, 7, 22, 10, 0, 0).toISOString()); // sold Aug 22
+  db.prepare(`
+    INSERT INTO refunds (invoice_id, refund_amount, coins_reversed, payment_method, created_at)
+    VALUES (?, 300, 0, 'Cash', ?)
+  `).run(result.lastInsertRowid, new Date(2026, 7, 25, 10, 0, 0).toISOString()); // refunded Aug 25
+
+  const agent = await loginAgent(app);
+  const res = await agent.get('/api/dashboard/sales-trend');
+  const byDate = Object.fromEntries(res.body.map(d => [d.date, d.total]));
+  assert.equal(byDate['2026-08-22'], 300);
+  assert.equal(byDate['2026-08-25'], -300);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('sales-trend buckets a just-after-local-midnight invoice into today, not UTC-yesterday', async () => {
+  // Same UTC-vs-local trap as the /summary test above: 2026-08-27T00:30 local (UTC+8) is
+  // 2026-08-26T16:30 UTC, so a UTC-based bucketing would file this under the wrong bar.
+  const tmp = path.join(__dirname, `tmp-dash-${Date.now()}-${Math.random()}.sqlite`);
+  const db = initDb(tmp);
+  createAdmin(db, 'admin', 'secret123');
+  const justAfterLocalMidnight = new Date(2026, 7, 27, 0, 30, 0);
+  const app = createApp(db, { now: () => justAfterLocalMidnight });
+
+  db.prepare(`
+    INSERT INTO invoices (invoice_number, subtotal, total, payment_method, created_at)
+    VALUES ('INV-2026-0001', 150, 150, 'Cash', ?)
+  `).run(justAfterLocalMidnight.toISOString());
+
+  const agent = await loginAgent(app);
+  const res = await agent.get('/api/dashboard/sales-trend');
+  const byDate = Object.fromEntries(res.body.map(d => [d.date, d.total]));
+  assert.equal(byDate['2026-08-27'], 150);
+  assert.equal(byDate['2026-08-26'], 0);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
 test('upcomingBirthdays includes a customer whose birthday matches today\'s local month/day regardless of birth year', async () => {
   const { db, tmp, app } = setup();
   // Born in 1985, but month/day (08-27) matches FIXED_NOW's local month/day.
