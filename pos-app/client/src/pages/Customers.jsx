@@ -26,12 +26,29 @@ export default function Customers() {
       <h2>Customers</h2>
 
       <div className="golvia-card">
-        <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); load(e.target.value); }} style={{ width: '100%', marginBottom: 12 }} />
-        {customers.map(c => (
-          <div key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--golvia-border)' }}>
-            <Link to={`/customers/${c.id}`}>{c.name}</Link> — {c.phone} <span className="golvia-badge">{c.membership.tier}</span>
-          </div>
-        ))}
+        <input placeholder="Search by name, phone or email" value={search}
+          onChange={e => { setSearch(e.target.value); load(e.target.value); }}
+          style={{ width: '100%', marginBottom: 12 }} />
+        {customers.length > 0 && (
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Phone</th><th>Tier</th><th>Coins</th><th></th></tr>
+            </thead>
+            <tbody>
+              {customers.map(c => (
+                <tr key={c.id}>
+                  <td><Link to={`/customers/${c.id}`}>{c.name}</Link></td>
+                  <td className="golvia-num">{c.phone}</td>
+                  <td><span className="golvia-badge">{c.membership.tier}</span></td>
+                  <td className="golvia-num">{c.membership.current_coin_balance}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <Link to={`/customers/${c.id}`}>View &amp; edit</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         {customers.length === 0 && <p className="golvia-empty">No customers found.</p>}
       </div>
 

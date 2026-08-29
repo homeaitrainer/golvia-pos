@@ -43,18 +43,41 @@ export default function CustomerProfile() {
     <div className="golvia-page">
       <h2>{customer.name} <span className="golvia-badge">{customer.membership.tier}</span></h2>
 
-      <div className="golvia-card">
-        <p>Phone: {customer.phone} | Email: {customer.email}</p>
-        <p className="golvia-num">Lifetime coins: {customer.membership.lifetime_coins} | Balance: {customer.membership.current_coin_balance}</p>
-        <p>Birthday: {customer.birthday || '—'} | State: {customer.state || '—'} | Gender: {customer.gender || '—'}</p>
-        <p>WhatsApp consent: {customer.whatsapp_consent ? 'Yes' : 'No'}</p>
-        <p>Notes: {customer.notes || '—'}</p>
-        {!editing && <button onClick={startEditing}>Edit</button>}
-      </div>
+      {/* Read and edit share one card: the Edit button sits in the card header where it is
+          actually visible, and the fields change in place. Previously the button was the last
+          thing under a wall of pipe-separated paragraphs, and editing opened a second card
+          further down the page. */}
+      {!editing && (
+        <div className="golvia-card">
+          <div className="golvia-card-head">
+            <h3 style={{ margin: 0 }}>Details</h3>
+            <button className="golvia-btn-primary" onClick={startEditing}>Edit details</button>
+          </div>
+          <dl className="golvia-kv">
+            <dt>Phone</dt><dd className="golvia-num">{customer.phone}</dd>
+            <dt>Email</dt><dd>{customer.email || '—'}</dd>
+            <dt>Birthday</dt><dd>{customer.birthday || '—'}</dd>
+            <dt>State</dt><dd>{customer.state || '—'}</dd>
+            <dt>Gender</dt><dd>{customer.gender || '—'}</dd>
+            <dt>WhatsApp</dt>
+            <dd>{customer.whatsapp_consent
+              ? <span className="golvia-badge">Consented</span>
+              : <span style={{ color: 'var(--golvia-text-muted)' }}>Not consented</span>}</dd>
+            <dt>Coins</dt>
+            <dd className="golvia-num">
+              {customer.membership.current_coin_balance} available
+              <span style={{ color: 'var(--golvia-text-muted)' }}> · {customer.membership.lifetime_coins} lifetime</span>
+            </dd>
+            <dt>Notes</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{customer.notes || '—'}</dd>
+          </dl>
+        </div>
+      )}
 
       {editing && form && (
         <div className="golvia-card">
-          <h3 style={{ marginTop: 0 }}>Edit customer</h3>
+          <div className="golvia-card-head">
+            <h3 style={{ margin: 0 }}>Edit details</h3>
+          </div>
           <div className="golvia-field"><label htmlFor="edit-customer-name">Name</label><input id="edit-customer-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} /></div>
           <div className="golvia-field"><label htmlFor="edit-customer-email">Email</label><input id="edit-customer-email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ width: '100%' }} /></div>
           <div className="golvia-field"><label htmlFor="edit-customer-birthday">Birthday</label><input id="edit-customer-birthday" type="date" value={form.birthday} onChange={e => setForm({ ...form, birthday: e.target.value })} /></div>

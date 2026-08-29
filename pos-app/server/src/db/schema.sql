@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS product_variants (
   product_id INTEGER NOT NULL REFERENCES products(id),
   variant_label TEXT,
   sku TEXT UNIQUE,
+  -- What a physical scanner actually reads off the label. Kept separate from `sku` because the
+  -- imported SKUs are human-typed marketplace codes ("CINCIN-aurora 0040"), while a printed
+  -- retail barcode encodes something else entirely (an EAN-13 digit string, or whatever the shop
+  -- prints). Nullable: a variant with no label yet is still sellable by search.
+  barcode TEXT,
   cost_price REAL NOT NULL DEFAULT 0,
   sell_price REAL NOT NULL DEFAULT 0,
   quantity INTEGER NOT NULL DEFAULT 0,

@@ -9,7 +9,7 @@ export default function ProductForm() {
   const isNew = id === 'new';
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', short_name: '', category: '', brand: '', description: '', image_url: '' });
-  const [variants, setVariants] = useState([{ variant_label: '', sku: '', cost_price: 0, sell_price: 0, quantity: 0 }]);
+  const [variants, setVariants] = useState([{ variant_label: '', sku: '', barcode: '', cost_price: 0, sell_price: 0, quantity: 0 }]);
   // Replaces the old window.prompt() flow: an inline form that can be validated before submitting
   // and genuinely cancelled. Cancelling a prompt() returned null, which Number() turned into 0 --
   // so backing out of the old dialog still sent a "change stock by 0" adjustment.
@@ -34,7 +34,7 @@ export default function ProductForm() {
       } else {
         await apiClient.put(`/products/${id}`, {
           ...form,
-          variants: variants.map(v => ({ id: v.id, cost_price: v.cost_price, sell_price: v.sell_price })),
+          variants: variants.map(v => ({ id: v.id, cost_price: v.cost_price, sell_price: v.sell_price, barcode: v.barcode })),
         });
       }
       navigate('/products');
@@ -112,10 +112,15 @@ export default function ProductForm() {
 
       <div className="golvia-card">
         <h3 style={{ marginTop: 0 }}>Variants</h3>
+        <p style={{ fontSize: 12, color: 'var(--golvia-text-muted)', marginTop: 0 }}>
+          To make an item scannable: click its <strong>Barcode</strong> box and scan the physical
+          label — the scanner types the code straight in. Save, and that code will then find this
+          item at checkout.
+        </p>
         <table>
           <thead>
             <tr>
-              <th>Label</th><th>SKU</th><th>Cost</th><th>Price</th><th>Qty</th>{!isNew && <th></th>}
+              <th>Label</th><th>SKU</th><th>Barcode</th><th>Cost</th><th>Price</th><th>Qty</th>{!isNew && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -123,6 +128,11 @@ export default function ProductForm() {
               <tr key={v.id ?? idx}>
                 <td><input placeholder="Label" value={v.variant_label} onChange={e => updateVariant(idx, 'variant_label', e.target.value)} style={{ width: 110 }} /></td>
                 <td><input placeholder="SKU" value={v.sku} onChange={e => updateVariant(idx, 'sku', e.target.value)} style={{ width: 130 }} /></td>
+                <td>
+                  <input placeholder="Scan here" value={v.barcode || ''}
+                    onChange={e => updateVariant(idx, 'barcode', e.target.value)}
+                    style={{ width: 140 }} className="golvia-num" />
+                </td>
                 <td><input type="number" value={v.cost_price} onChange={e => updateVariant(idx, 'cost_price', Number(e.target.value))} style={{ width: 80 }} /></td>
                 <td><input type="number" value={v.sell_price} onChange={e => updateVariant(idx, 'sell_price', Number(e.target.value))} style={{ width: 80 }} /></td>
                 <td>
@@ -140,7 +150,7 @@ export default function ProductForm() {
         </table>
 
         {isNew && (
-          <button onClick={() => setVariants([...variants, { variant_label: '', sku: '', cost_price: 0, sell_price: 0, quantity: 0 }])}>
+          <button onClick={() => setVariants([...variants, { variant_label: '', sku: '', barcode: '', cost_price: 0, sell_price: 0, quantity: 0 }])}>
             + Variant
           </button>
         )}

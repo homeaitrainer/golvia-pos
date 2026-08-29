@@ -28,7 +28,8 @@ export default function Checkout() {
   const [searching, setSearching] = useState(false);
   // cart lines: { variantId, name, variantLabel, unitPrice, quantity, itemDiscount, stock }
   const [cart, setCart] = useState([]);
-  const [phone, setPhone] = useState('');
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerResults, setCustomerResults] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [lookingUp, setLookingUp] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -124,23 +125,49 @@ export default function Checkout() {
     }));
   }
 
-  async function lookupCustomer() {
+  // Searches name, phone, and email rather than requiring an exact phone match -- staff often know
+  // the customer's name, not their number. Several people can share a name, so anything other than
+  // a single hit shows a chooser instead of guessing.
+  async function searchCustomers() {
+    const query = customerQuery.trim();
+    if (!query) return;
     setLookingUp(true);
+    setCustomerResults([]);
     try {
-      const c = await apiClient.get(`/customers/by-phone/${encodeURIComponent(phone)}`);
-      setCustomer(c);
-      setSelectedVoucherId('');
-      setCoinsToRedeem(0);
-      setShowNewCustomerForm(false);
-      setError('');
+      const matches = await apiClient.get(`/customers?search=${encodeURIComponent(query)}`);
+      if (matches.length === 0) {
+        setCustomer(null);
+        setError('No customer matches that name or phone — use “+ New” to add them, or check out as guest.');
+      } else if (matches.length === 1) {
+        await selectCustomer(matches[0].id);
+      } else {
+        setCustomerResults(matches);
+        setError('');
+      }
     } catch {
-      setCustomer(null);
-      setSelectedVoucherId('');
-      setCoinsToRedeem(0);
-      setError('Customer not found — use "+ New customer" to add them, or check out as guest.');
+      setError('Could not search customers.');
     } finally {
       setLookingUp(false);
     }
+  }
+
+  async function selectCustomer(customerId) {
+    // The list endpoint returns membership but not vouchers; the detail endpoint has both, and the
+    // voucher picker below needs them.
+    const full = await apiClient.get(`/customers/${customerId}`);
+    setCustomer(full);
+    setCustomerResults([]);
+    setSelectedVoucherId('');
+    setCoinsToRedeem(0);
+    setShowNewCustomerForm(false);
+    setError('');
+  }
+
+  function clearCustomer() {
+    setCustomer(null);
+    setCustomerResults([]);
+    setSelectedVoucherId('');
+    setCoinsToRedeem(0);
   }
 
   async function createCustomerInline() {
@@ -152,7 +179,7 @@ export default function Checkout() {
     try {
       const c = await apiClient.post('/customers', newCustomerForm);
       setCustomer({ ...c, vouchers: [] }); // a brand-new customer has no vouchers yet
-      setPhone(c.phone);
+      setCustomerQuery(c.phone);
       setSelectedVoucherId('');
       setCoinsToRedeem(0);
       setShowNewCustomerForm(false);
@@ -309,25 +336,57 @@ export default function Checkout() {
 
           <div className="golvia-card">
             <h3 style={{ marginTop: 0 }}>Customer</h3>
-            <div className="golvia-toolbar">
-              <input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)}
-                onBlur={onBlurRefocus} id="checkout-lookup-phone" style={{ flex: 1, minWidth: 120 }} />
-              <button onClick={lookupCustomer} disabled={lookingUp || !phone.trim()}>
-                {lookingUp ? 'Looking…' : 'Look up'}
-              </button>
-              {!customer && (
-                <button onClick={() => {
-                  setShowNewCustomerForm(s => !s);
-                  if (!showNewCustomerForm) setNewCustomerForm(f => ({ ...f, phone }));
-                }}>{showNewCustomerForm ? 'Cancel' : '+ New'}</button>
-              )}
-            </div>
+            {customer ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>
+                    {customer.name} <span className="golvia-badge">{customer.membership.tier}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--golvia-text-muted)' }}>
+                    <span className="golvia-num">{customer.phone}</span>
+                    {' · '}
+                    <span className="golvia-num">{customer.membership.current_coin_balance}</span> coins
+                  </div>
+                </div>
+                <button onClick={clearCustomer}>Change</button>
+              </div>
+            ) : (
+              <>
+                <div className="golvia-toolbar">
+                  <input placeholder="Phone or name" value={customerQuery}
+                    onChange={e => setCustomerQuery(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') searchCustomers(); }}
+                    onBlur={onBlurRefocus} id="checkout-lookup-phone" style={{ flex: 1, minWidth: 110 }} />
+                  <button onClick={searchCustomers} disabled={lookingUp || !customerQuery.trim()}>
+                    {lookingUp ? 'Looking…' : 'Look up'}
+                  </button>
+                  <button onClick={() => {
+                    setShowNewCustomerForm(s => !s);
+                    if (!showNewCustomerForm) setNewCustomerForm(f => ({ ...f, phone: customerQuery }));
+                  }}>{showNewCustomerForm ? 'Cancel' : '+ New'}</button>
+                </div>
 
-            {customer && (
-              <p style={{ margin: '4px 0 0' }}>
-                {customer.name} <span className="golvia-badge">{customer.membership.tier}</span>{' '}
-                <span className="golvia-num">{customer.membership.current_coin_balance}</span> coins
-              </p>
+                {/* More than one match -- most often two people sharing a name -- so the phone
+                    number is shown to tell them apart rather than the first hit being assumed. */}
+                {customerResults.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ fontSize: 12, color: 'var(--golvia-text-muted)', margin: '0 0 6px' }}>
+                      {customerResults.length} matches — pick the right one:
+                    </p>
+                    <div className="golvia-customer-results">
+                      {customerResults.map(c => (
+                        <button key={c.id} className="golvia-customer-hit" onClick={() => selectCustomer(c.id)}>
+                          <span style={{ fontWeight: 600 }}>{c.name}</span>
+                          <span style={{ fontSize: 12, color: 'var(--golvia-text-muted)' }}>
+                            <span className="golvia-num">{c.phone}</span>
+                            {c.membership ? <> · {c.membership.tier}</> : null}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {!customer && showNewCustomerForm && (

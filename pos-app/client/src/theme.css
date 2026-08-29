@@ -190,6 +190,59 @@ h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
 }
 .golvia-stepper input:focus { box-shadow: none; }
 
+/* ---- Card header row (title left, action right) ---- */
+
+.golvia-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--golvia-border);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+/* Label/value pairs, replacing pipe-separated paragraphs that were hard to scan. */
+.golvia-kv {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+.golvia-kv dt { color: var(--golvia-text-muted); }
+.golvia-kv dd { margin: 0; }
+
+@media (max-width: 600px) {
+  .golvia-kv { grid-template-columns: 1fr; gap: 2px; }
+  .golvia-kv dd { margin-bottom: 8px; }
+}
+
+/* ---- Customer disambiguation list ---- */
+
+.golvia-customer-results {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--golvia-border);
+  border-radius: 6px;
+}
+.golvia-customer-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--golvia-border);
+  padding: 9px 12px;
+  background: var(--golvia-surface);
+}
+.golvia-customer-hit:last-child { border-bottom: none; }
+.golvia-customer-hit:hover { background: var(--golvia-accent-tint); }
+
 /* ---- Totals panel ---- */
 
 .golvia-total-rows { font-size: 13px; margin: 4px 0 12px; }

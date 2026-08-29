@@ -113,3 +113,59 @@ test('adjust-stock writes a stock_adjustments audit row with the correct variant
 
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('lookup finds a variant by barcode, and matching tolerates case and stray whitespace', async () => {
+  const { agent, db, tmp } = await setup();
+  const create = await agent.post('/api/products').send({
+    name: 'Scan Test Ring',
+    variants: [{ variant_label: '40g', sku: 'CINCIN-aurora 0040', barcode: '9556123456789', cost_price: 4, sell_price: 40, quantity: 10 }],
+  });
+  assert.equal(create.status, 201);
+
+  // A scanner reads the printed barcode, not the marketplace SKU.
+  const byBarcode = await agent.get('/api/products/lookup?sku=9556123456789');
+  assert.equal(byBarcode.status, 200);
+  assert.equal(byBarcode.body.variant.barcode, '9556123456789');
+
+  // Scanners can emit surrounding whitespace.
+  const padded = await agent.get(`/api/products/lookup?sku=${encodeURIComponent('  9556123456789 ')}`);
+  assert.equal(padded.status, 200);
+
+  // A hand-typed SKU won't reproduce the source data's mixed casing.
+  const bySkuDifferentCase = await agent.get(`/api/products/lookup?sku=${encodeURIComponent('cincin-AURORA 0040')}`);
+  assert.equal(bySkuDifferentCase.status, 200);
+  assert.equal(bySkuDifferentCase.body.variant.sku, 'CINCIN-aurora 0040');
+
+  const missing = await agent.get('/api/products/lookup?sku=0000000000000');
+  assert.equal(missing.status, 404);
+
+  // An empty scan must not match the first variant that happens to have a blank barcode.
+  const blank = await agent.get('/api/products/lookup?sku=');
+  assert.equal(blank.status, 404);
+
+  db.close(); fs.unlinkSync(tmp);
+});
+
+test('a variant barcode round-trips through create and update', async () => {
+  const { agent, db, tmp } = await setup();
+  const create = await agent.post('/api/products').send({
+    name: 'Barcode Round Trip',
+    variants: [{ variant_label: 'A', sku: 'RT-1', cost_price: 1, sell_price: 10, quantity: 3 }],
+  });
+  const productId = create.body.id;
+  const variantId = create.body.variants[0].id;
+  assert.equal(create.body.variants[0].barcode, null);
+
+  const updated = await agent.put(`/api/products/${productId}`).send({
+    name: 'Barcode Round Trip',
+    variants: [{ id: variantId, cost_price: 1, sell_price: 10, barcode: '4901234567894' }],
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.variants[0].barcode, '4901234567894');
+  // The assigned barcode is immediately scannable.
+  const scanned = await agent.get('/api/products/lookup?sku=4901234567894');
+  assert.equal(scanned.status, 200);
+  assert.equal(scanned.body.variant.id, variantId);
+
+  db.close(); fs.unlinkSync(tmp);
+});

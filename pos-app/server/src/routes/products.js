@@ -19,8 +19,8 @@ function productsRouter(db) {
       const rows = db.prepare(`
         SELECT DISTINCT p.* FROM products p
         LEFT JOIN product_variants v ON v.product_id = p.id
-        WHERE p.name LIKE ? OR p.category LIKE ? OR v.sku LIKE ?
-      `).all(like, like, like);
+        WHERE p.name LIKE ? OR p.short_name LIKE ? OR p.category LIKE ? OR v.sku LIKE ? OR v.barcode LIKE ?
+      `).all(like, like, like, like, like);
       products = rows;
     } else {
       products = db.prepare('SELECT * FROM products').all();
@@ -28,9 +28,23 @@ function productsRouter(db) {
     res.json(products.map(withVariants));
   });
 
+  // Scan/manual lookup. Matches a barcode OR a SKU, because the two are different things here:
+  // the imported SKUs are human-typed marketplace codes, while a scanner reads whatever is
+  // encoded on the physical label. Matching is trimmed and case-insensitive -- scanners can emit
+  // surrounding whitespace, and a hand-typed SKU won't reproduce the source data's mixed casing
+  // ("CINCIN-aurora 0040"). Barcode is checked first: it is the machine-read identifier, so on the
+  // (unlikely) chance a code exists as both, the scanned one wins.
   router.get('/lookup', (req, res) => {
-    const { sku } = req.query;
-    const variant = db.prepare('SELECT * FROM product_variants WHERE sku = ?').get(sku);
+    const code = String(req.query.sku ?? req.query.code ?? '').trim();
+    if (!code) return res.status(404).json({ error: 'NOT_FOUND' });
+
+    const variant =
+      db.prepare(`
+        SELECT * FROM product_variants
+        WHERE barcode IS NOT NULL AND barcode <> '' AND UPPER(TRIM(barcode)) = UPPER(?)
+      `).get(code)
+      || db.prepare('SELECT * FROM product_variants WHERE UPPER(TRIM(sku)) = UPPER(?)').get(code);
+
     if (!variant) return res.status(404).json({ error: 'NOT_FOUND' });
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(variant.product_id);
     res.json({ product, variant });
@@ -51,11 +65,11 @@ function productsRouter(db) {
       `).run(name, short_name || deriveShortName(name), category, description, brand, image_url);
       const productId = result.lastInsertRowid;
       const insertVariant = db.prepare(`
-        INSERT INTO product_variants (product_id, variant_label, sku, cost_price, sell_price, quantity, low_stock_threshold)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO product_variants (product_id, variant_label, sku, barcode, cost_price, sell_price, quantity, low_stock_threshold)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const v of variants) {
-        insertVariant.run(productId, v.variant_label, v.sku, v.cost_price, v.sell_price, v.quantity, v.low_stock_threshold ?? 3);
+        insertVariant.run(productId, v.variant_label, v.sku, v.barcode || null, v.cost_price, v.sell_price, v.quantity, v.low_stock_threshold ?? 3);
       }
       return productId;
     });
@@ -78,10 +92,10 @@ function productsRouter(db) {
       // a different product.
       if (Array.isArray(variants)) {
         const updateVariant = db.prepare(`
-          UPDATE product_variants SET cost_price = ?, sell_price = ? WHERE id = ? AND product_id = ?
+          UPDATE product_variants SET cost_price = ?, sell_price = ?, barcode = ? WHERE id = ? AND product_id = ?
         `);
         for (const v of variants) {
-          updateVariant.run(v.cost_price, v.sell_price, v.id, req.params.id);
+          updateVariant.run(v.cost_price, v.sell_price, v.barcode || null, v.id, req.params.id);
         }
       }
     });

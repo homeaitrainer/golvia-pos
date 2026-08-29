@@ -18,6 +18,12 @@ function migrateSchema(db) {
   if (!hasShortName) {
     db.exec('ALTER TABLE products ADD COLUMN short_name TEXT');
   }
+
+  const variantColumns = db.prepare('PRAGMA table_info(product_variants)').all();
+  const hasBarcode = variantColumns.some((col) => col.name === 'barcode');
+  if (!hasBarcode) {
+    db.exec('ALTER TABLE product_variants ADD COLUMN barcode TEXT');
+  }
 }
 
 function initDb(filePath) {
