@@ -58,3 +58,44 @@ test('importIntoDb stores image_url on the product row', () => {
   assert.equal(product.image_url, 'https://example.com/ring.jpg');
   db.close(); fs.unlinkSync(tmp);
 });
+
+test('deriveShortName strips the brand prefix and marketing tail, keeping the gram weight', () => {
+  const { deriveShortName } = require('../../src/services/importStock');
+  assert.equal(
+    deriveShortName('GOLVIA JEWELLERY Cincin Eksklusif Adjustable | Korean Style Women Ring Jewellery Daily Wear Accessories & Perfect Gift for Anniversary (A2)'),
+    'Cincin Eksklusif Adjustable',
+  );
+  // Gram weight is real product identity for jewellery, so it is kept.
+  assert.equal(
+    deriveShortName('GOLVIA JEWELLERY (37.0g) Gelang Lipan Kikir | Korean Style Women Bracelet  Jewellery Daily Wear'),
+    '(37.0g) Gelang Lipan Kikir',
+  );
+  // Leading asterisk and doubled spaces both appear in the real export.
+  assert.equal(
+    deriveShortName('GOLVIA JEWELLERY  * Gelang Minimalis  | Korean Style Women Bracelet Jewellery'),
+    'Gelang Minimalis',
+  );
+  // Brand casing varies between rows in the source data.
+  assert.equal(
+    deriveShortName('GOLVIA Jewellery (13.0g) Gold Plated Bracelet Paper Clip Love ACE | Korean Style'),
+    '(13.0g) Gold Plated Bracelet Paper Clip Love ACE',
+  );
+  // No pipe, no brand prefix -- returned as-is.
+  assert.equal(deriveShortName('Plain Ring'), 'Plain Ring');
+  // Stripping everything would leave an unusable blank label, so fall back to the full name.
+  assert.equal(deriveShortName('GOLVIA JEWELLERY | tail only'), 'GOLVIA JEWELLERY | tail only');
+  assert.equal(deriveShortName(''), '');
+});
+
+test('importIntoDb stores a derived short_name alongside the full name', () => {
+  const tmp = path.join(__dirname, `tmp-import-short-${Date.now()}.sqlite`);
+  const db = initDb(tmp);
+  const grouped = parseStockRows([
+    { product_name: 'GOLVIA JEWELLERY Bangle Premium | Korean Style Women Bracelet', variation_value: 'A', seller_sku: 'B-1', Cost: 1, price: 10, quantity: 5 },
+  ]);
+  importIntoDb(db, grouped);
+  const product = db.prepare('SELECT name, short_name FROM products').get();
+  assert.equal(product.short_name, 'Bangle Premium');
+  assert.ok(product.name.startsWith('GOLVIA JEWELLERY'));
+  db.close(); fs.unlinkSync(tmp);
+});

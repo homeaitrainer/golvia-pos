@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/requireAuth');
+const { deriveShortName } = require('../services/importStock');
 
 function productsRouter(db) {
   const router = express.Router();
@@ -42,11 +43,12 @@ function productsRouter(db) {
   });
 
   router.post('/', (req, res) => {
-    const { name, category, description, brand, image_url, variants = [] } = req.body;
+    const { name, short_name, category, description, brand, image_url, variants = [] } = req.body;
     const tx = db.transaction(() => {
       const result = db.prepare(`
-        INSERT INTO products (name, category, description, brand, image_url) VALUES (?, ?, ?, ?, ?)
-      `).run(name, category, description, brand, image_url);
+        INSERT INTO products (name, short_name, category, description, brand, image_url)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(name, short_name || deriveShortName(name), category, description, brand, image_url);
       const productId = result.lastInsertRowid;
       const insertVariant = db.prepare(`
         INSERT INTO product_variants (product_id, variant_label, sku, cost_price, sell_price, quantity, low_stock_threshold)
@@ -63,11 +65,12 @@ function productsRouter(db) {
   });
 
   router.put('/:id', (req, res) => {
-    const { name, category, description, brand, image_url, variants } = req.body;
+    const { name, short_name, category, description, brand, image_url, variants } = req.body;
     const tx = db.transaction(() => {
       db.prepare(`
-        UPDATE products SET name = ?, category = ?, description = ?, brand = ?, image_url = ? WHERE id = ?
-      `).run(name, category, description, brand, image_url, req.params.id);
+        UPDATE products SET name = ?, short_name = ?, category = ?, description = ?, brand = ?, image_url = ?
+        WHERE id = ?
+      `).run(name, short_name || deriveShortName(name), category, description, brand, image_url, req.params.id);
 
       // Variant price/cost edits only -- quantity is intentionally excluded here so the
       // audited adjust-stock endpoint below remains the sole path for quantity changes.

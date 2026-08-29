@@ -47,7 +47,7 @@ function dashboardRouter(db, now = () => new Date()) {
     `).get(startIso, endIso);
 
     const lowStockVariants = db.prepare(`
-      SELECT pv.*, p.name as product_name FROM product_variants pv
+      SELECT pv.*, COALESCE(NULLIF(p.short_name, ''), p.name) as product_name FROM product_variants pv
       JOIN products p ON p.id = pv.product_id
       WHERE pv.quantity <= pv.low_stock_threshold
     `).all();

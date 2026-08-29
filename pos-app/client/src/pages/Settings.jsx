@@ -7,15 +7,29 @@ export default function Settings() {
   // this field always loads empty. Track what the user types this session separately so an
   // untouched field doesn't overwrite the stored password with an empty string on save.
   const [gmailAppPassword, setGmailAppPassword] = useState('');
+  // A toast instead of alert(): a modal browser dialog blocks the whole page and has to be
+  // dismissed, which is disproportionate feedback for "your settings saved".
+  const [toast, setToast] = useState(null); // { text, isError }
 
   useEffect(() => { apiClient.get('/settings').then(setSettings); }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   async function save() {
     const body = { ...settings };
     delete body.gmail_app_password;
     if (gmailAppPassword) body.gmail_app_password = gmailAppPassword;
-    await apiClient.put('/settings', body);
-    alert('Saved.');
+    try {
+      await apiClient.put('/settings', body);
+      setGmailAppPassword('');
+      setToast({ text: 'Settings saved.' });
+    } catch (err) {
+      setToast({ text: err.data?.error || 'Could not save settings.', isError: true });
+    }
   }
 
   function downloadCsv(filename, content) {
@@ -55,6 +69,12 @@ export default function Settings() {
         <h3 style={{ marginTop: 0 }}>Data export</h3>
         <button onClick={exportAll}>Export all data</button>
       </div>
+
+      {toast && (
+        <div className={`golvia-toast${toast.isError ? ' golvia-toast-error' : ''}`} role="status">
+          {toast.text}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
 
 const REFUND_ERROR_MESSAGES = {
@@ -15,6 +15,11 @@ const EMAIL_RECEIPT_ERROR_MESSAGES = {
 
 export default function InvoiceReceipt() {
   const { id } = useParams();
+  // Checkout appends ?justCompleted=1 on a successful sale so this page can confirm the sale
+  // happened and state the amount collected -- previously the screen simply became a receipt,
+  // with nothing marking the moment the sale went through.
+  const [searchParams] = useSearchParams();
+  const justCompleted = searchParams.get('justCompleted') === '1';
   const [invoice, setInvoice] = useState(null);
   const [returnQuantities, setReturnQuantities] = useState({});
   const [refundPaymentMethod, setRefundPaymentMethod] = useState('Cash');
@@ -85,7 +90,7 @@ export default function InvoiceReceipt() {
           body * { visibility: hidden; }
           /* visibility:hidden still reserves layout space, and the sidebar is a 220px flex
              item -- display:none removes it from the print layout entirely. */
-          .golvia-sidebar, .golvia-topbar { display: none !important; }
+          .golvia-sidebar, .golvia-topbar, .golvia-sale-done { display: none !important; }
           .receipt-printable, .receipt-printable * { visibility: visible; }
           .receipt-printable {
             position: absolute; left: 0; top: 0;
@@ -95,6 +100,16 @@ export default function InvoiceReceipt() {
           .receipt-printable button { display: none; }
         }
       `}</style>
+
+      {justCompleted && (
+        <div className="golvia-card golvia-sale-done" style={{ maxWidth: 380, margin: '0 auto 16px' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--golvia-success)' }}>✓ Sale completed</div>
+          <div style={{ fontSize: 13, color: 'var(--golvia-text-muted)', marginTop: 4 }}>
+            Collected <strong className="golvia-num">RM{invoice.total.toFixed(2)}</strong> by {invoice.payment_method}
+            {' · '}{invoice.invoice_number}
+          </div>
+        </div>
+      )}
 
       <div className="receipt-printable golvia-card" style={{ maxWidth: 380, margin: '0 auto', fontFamily: 'var(--golvia-font-heading)' }}>
         <div style={{ textAlign: 'center', letterSpacing: 3, fontSize: 22, color: 'var(--golvia-accent-dark)', fontWeight: 'bold' }}>GOLVIA</div>

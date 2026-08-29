@@ -125,6 +125,113 @@ h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
   .golvia-navitem { justify-content: center; padding: 12px 0; gap: 0; font-size: 0; }
 }
 
+/* ---- Checkout: two-column register layout ----
+   The left column scrolls with the page; the order panel on the right is sticky so the cart,
+   total, and Complete Sale button are ALWAYS on screen. Before this, a broad product search
+   rendered a results block tall enough to push the cart ~1900px below the fold, which is why
+   adding an item appeared to do nothing -- the confirmation animation was firing off-screen. */
+
+.golvia-register { display: flex; align-items: flex-start; gap: 20px; }
+.golvia-register-main { flex: 1; min-width: 0; }
+.golvia-register-side { width: 380px; flex-shrink: 0; position: sticky; top: 20px; }
+
+@media (max-width: 1100px) {
+  .golvia-register { flex-direction: column; }
+  /* Order panel first when stacked: the total and Complete Sale must stay reachable without
+     scrolling past a long result list. */
+  .golvia-register-side { width: 100%; position: static; order: -1; }
+}
+
+/* Results are capped and scroll inside themselves, so match count can never push the page. */
+.golvia-results { max-height: 420px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.golvia-results-note { font-size: 12px; color: var(--golvia-text-muted); margin: 10px 0 0; }
+
+.golvia-result-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--golvia-border);
+}
+.golvia-result-name { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.golvia-variants { display: flex; flex-wrap: wrap; gap: 6px; }
+.golvia-variant-btn { padding: 6px 10px; font-size: 12px; }
+
+/* ---- Cart lines and quantity stepper ---- */
+
+.golvia-cart-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--golvia-border);
+}
+.golvia-cart-name { font-size: 13px; font-weight: 600; }
+.golvia-cart-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.golvia-cart-amount { font-weight: 600; white-space: nowrap; }
+
+.golvia-stepper { display: inline-flex; align-items: center; border: 1px solid var(--golvia-border); border-radius: 5px; overflow: hidden; }
+.golvia-stepper button {
+  border: none;
+  border-radius: 0;
+  padding: 4px 10px;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--golvia-surface);
+}
+.golvia-stepper input {
+  width: 46px;
+  border: none;
+  border-left: 1px solid var(--golvia-border);
+  border-right: 1px solid var(--golvia-border);
+  border-radius: 0;
+  text-align: center;
+  padding: 5px 2px;
+}
+.golvia-stepper input:focus { box-shadow: none; }
+
+/* ---- Totals panel ---- */
+
+.golvia-total-rows { font-size: 13px; margin: 4px 0 12px; }
+.golvia-total-row { display: flex; justify-content: space-between; padding: 3px 0; }
+.golvia-total-row span:last-child { font-variant-numeric: tabular-nums; }
+.golvia-total-grand {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 2px solid var(--golvia-accent);
+  margin-top: 8px;
+  padding-top: 10px;
+}
+.golvia-total-grand-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--golvia-text-muted); }
+.golvia-total-grand-value {
+  font-family: var(--golvia-font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--golvia-text);
+}
+
+/* Money and counts line up column-to-column instead of wobbling with digit width. */
+.golvia-num { font-variant-numeric: tabular-nums; }
+
+/* ---- Toast ---- */
+
+.golvia-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  background: var(--golvia-nav-bg);
+  color: #ffffff;
+  padding: 12px 18px;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 39, 67, 0.22);
+  font-size: 13px;
+  max-width: 340px;
+}
+.golvia-toast-error { background: var(--golvia-danger); }
+
 /* ---- Stat cards ---- */
 
 .golvia-stats {
@@ -275,6 +382,11 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--golvia-border); font-size
 .golvia-badge-refunded {
   background: var(--golvia-danger);
   color: #ffffff;
+}
+
+.golvia-badge-low {
+  background: var(--golvia-tint-amber);
+  color: var(--golvia-ink-amber);
 }
 
 .golvia-empty { color: var(--golvia-text-muted); font-style: italic; padding: 20px 0; }

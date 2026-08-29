@@ -15,7 +15,7 @@ export default function Invoices() {
             {invoices.map(i => (
               <tr key={i.id}>
                 <td><Link to={`/invoices/${i.id}/receipt`}>{i.invoice_number}</Link></td>
-                <td>RM{i.total}</td>
+                <td className="golvia-num">RM{i.total.toFixed(2)}</td>
                 <td><span className={`golvia-badge${i.status !== 'completed' ? ' golvia-badge-refunded' : ''}`}>{i.status}</span></td>
                 <td>{new Date(i.created_at).toLocaleString()}</td>
               </tr>

@@ -3,3 +3,9 @@ node_modules/
 data/
 dist/
 .superpowers/
+
+# Third-party agent skills installed via 'npx skills add' -- tooling, not application code.
+# They stay on disk and keep working; they just don't belong in the POS repo.
+.agents/
+.claude/
+skills-lock.json

@@ -12,6 +12,12 @@ function migrateSchema(db) {
   if (!hasRedeemedInvoiceId) {
     db.exec('ALTER TABLE vouchers ADD COLUMN redeemed_invoice_id INTEGER REFERENCES invoices(id)');
   }
+
+  const productColumns = db.prepare('PRAGMA table_info(products)').all();
+  const hasShortName = productColumns.some((col) => col.name === 'short_name');
+  if (!hasShortName) {
+    db.exec('ALTER TABLE products ADD COLUMN short_name TEXT');
+  }
 }
 
 function initDb(filePath) {

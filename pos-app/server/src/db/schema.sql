@@ -7,6 +7,10 @@ CREATE TABLE IF NOT EXISTS admin_users (
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  -- Counter-friendly display name. `name` holds the full marketplace title (100+ chars of SEO
+  -- copy), which is unreadable in a cart or on a receipt; short_name is what staff and customers
+  -- actually see. Derived on import, backfillable, and editable per product.
+  short_name TEXT,
   category TEXT,
   description TEXT,
   brand TEXT,

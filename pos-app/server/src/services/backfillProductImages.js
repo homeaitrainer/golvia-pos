@@ -1,4 +1,24 @@
-const { parseStockRows } = require('./importStock');
+const { parseStockRows, deriveShortName } = require('./importStock');
+
+// Unlike the image backfill, this needs no spreadsheet: short_name is derived from the product's
+// own `name`, which is already in the database. Only fills rows that have no short_name yet, so
+// it is safe to re-run and never clobbers a name the shop has edited by hand.
+function backfillShortNames(db) {
+  let updated = 0;
+  const products = db.prepare(`
+    SELECT id, name FROM products WHERE short_name IS NULL OR short_name = ''
+  `).all();
+  const updateStmt = db.prepare('UPDATE products SET short_name = ? WHERE id = ?');
+  const tx = db.transaction(() => {
+    for (const product of products) {
+      const shortName = deriveShortName(product.name);
+      if (!shortName) continue;
+      updated += updateStmt.run(shortName, product.id).changes;
+    }
+  });
+  tx();
+  return { updated };
+}
 
 function backfillImageUrls(db, groupedProducts) {
   let updated = 0;
@@ -27,8 +47,10 @@ if (require.main === module) {
   const rows = xlsx.utils.sheet_to_json(sheet);
   const grouped = parseStockRows(rows);
   const db = getDb();
-  const result = backfillImageUrls(db, grouped);
-  console.log(`Backfilled image_url on ${result.updated} product(s).`);
+  const imageResult = backfillImageUrls(db, grouped);
+  console.log(`Backfilled image_url on ${imageResult.updated} product(s).`);
+  const shortNameResult = backfillShortNames(db);
+  console.log(`Backfilled short_name on ${shortNameResult.updated} product(s).`);
 }
 
-module.exports = { backfillImageUrls };
+module.exports = { backfillImageUrls, backfillShortNames };

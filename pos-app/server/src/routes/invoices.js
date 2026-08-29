@@ -8,7 +8,9 @@ function getInvoiceWithDetails(db, invoiceId) {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
   if (!invoice) return null;
   const items = db.prepare(`
-    SELECT ii.*, COALESCE(p.name, 'Deleted product') as product_name, COALESCE(pv.variant_label, 'N/A') as variant_label
+    SELECT ii.*,
+           COALESCE(NULLIF(p.short_name, ''), p.name, 'Deleted product') as product_name,
+           COALESCE(pv.variant_label, 'N/A') as variant_label
     FROM invoice_items ii
     LEFT JOIN product_variants pv ON pv.id = ii.variant_id
     LEFT JOIN products p ON p.id = pv.product_id

@@ -18,6 +18,21 @@ export function flashElement(el) {
   gsap.fromTo(el, { backgroundColor: '#e3f6f2' }, { backgroundColor: '#ffffff', duration: 0.25, ease: 'power1.out' });
 }
 
+// Tweens a number in place so the running total visibly moves when a discount or quantity
+// changes, rather than silently swapping to a new figure the cashier may not notice.
+export function countTo(el, from, to, format) {
+  if (!el) return;
+  if (prefersReducedMotion() || from === to) { el.textContent = format(to); return; }
+  const state = { value: from };
+  gsap.to(state, {
+    value: to,
+    duration: 0.25,
+    ease: 'power2.out',
+    onUpdate: () => { el.textContent = format(state.value); },
+    onComplete: () => { el.textContent = format(to); },
+  });
+}
+
 export function successPulse(el, onComplete) {
   if (!el) { onComplete?.(); return; }
   if (prefersReducedMotion()) { onComplete?.(); return; }

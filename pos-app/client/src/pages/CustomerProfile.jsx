@@ -45,7 +45,7 @@ export default function CustomerProfile() {
 
       <div className="golvia-card">
         <p>Phone: {customer.phone} | Email: {customer.email}</p>
-        <p>Lifetime coins: {customer.membership.lifetime_coins} | Balance: {customer.membership.current_coin_balance}</p>
+        <p className="golvia-num">Lifetime coins: {customer.membership.lifetime_coins} | Balance: {customer.membership.current_coin_balance}</p>
         <p>Birthday: {customer.birthday || '—'} | State: {customer.state || '—'} | Gender: {customer.gender || '—'}</p>
         <p>WhatsApp consent: {customer.whatsapp_consent ? 'Yes' : 'No'}</p>
         <p>Notes: {customer.notes || '—'}</p>
