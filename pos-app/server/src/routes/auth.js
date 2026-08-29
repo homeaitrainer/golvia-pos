@@ -13,7 +13,16 @@ function authRouter(db) {
     }
     const token = crypto.randomBytes(24).toString('hex');
     issueSession(token);
-    res.cookie('session', token, { httpOnly: true, sameSite: 'lax' });
+    // `secure` is set only when the app is actually served over HTTPS (i.e. hosted). It must NOT
+    // be set for the normal local install, which runs on plain http://localhost -- browsers refuse
+    // to send a secure cookie over http, so setting it unconditionally would break login at the
+    // shop counter. GOLVIA_PUBLIC=1 is the single switch that says "this instance is exposed".
+    const isPublicDeployment = process.env.GOLVIA_PUBLIC === '1';
+    res.cookie('session', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isPublicDeployment,
+    });
     res.json({ username });
   });
 

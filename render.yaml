@@ -1,0 +1,33 @@
+# Render deployment for GOLVIA POS.
+#
+# IMPORTANT: the `disk` block below is not optional. GOLVIA stores everything -- products,
+# customers, sales, membership coins -- in a SQLite file. Managed platforms replace the
+# application directory on every deploy, so without a mounted persistent disk the shop's entire
+# database is wiped each time the service restarts or redeploys. Render's free tier does NOT
+# include disks, so this configuration requires a paid instance.
+#
+# Before the first deploy, and again any time you rebuild the database, set a real admin password:
+#   node server/src/services/setAdminPassword.js <username> <password>
+# The server refuses to start with GOLVIA_PUBLIC=1 while the default setup password is still set.
+services:
+  - type: web
+    name: golvia-pos
+    runtime: node
+    plan: starter # free tier has no persistent disk; see note above
+    buildCommand: npm run install:all && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Turns on: 0.0.0.0 binding, secure cookies, and the trust-proxy setting needed for
+      # secure cookies to survive Render's HTTPS termination.
+      - key: GOLVIA_PUBLIC
+        value: "1"
+      # Must point inside the mounted disk below, or the database does not survive a deploy.
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: golvia-data
+      mountPath: /var/data
+      sizeGB: 1

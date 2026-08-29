@@ -88,3 +88,67 @@ cd client && npm run build
 - The SQLite database lives at `server/data/golvia.db`.
 - A backup is taken automatically once at server startup and then every 24 hours,
   written to `server/data/backups/`.
+
+## Changing the admin password
+
+The setup account is `admin` / `changeme123`. Change it — especially if the shop
+computer is shared:
+
+```bash
+cd server && node src/services/setAdminPassword.js admin "your-new-passphrase"
+```
+
+You can change the username at the same time by passing a different first
+argument. Restart the server afterwards to force a fresh login.
+
+## Hosting it online (optional — read this first)
+
+GOLVIA is built to run **on the shop's own computer**. It stores everything in a
+local SQLite file and serves only `127.0.0.1`, so nothing is reachable from the
+shop's wifi or the internet. For a single counter, that is the right setup: no
+monthly cost, no internet dependency at the till, and customer data never leaves
+the premises.
+
+Host it only if you actually need something the local install can't do — such as
+checking sales from home, or running a second branch.
+
+### Vercel / Netlify will not work
+
+These platforms run *serverless functions*: short-lived, no persistent disk, no
+long-running process. GOLVIA needs all three:
+
+| GOLVIA needs | Serverless gives | Result |
+|---|---|---|
+| To write sales to a SQLite file | A read-only filesystem, wiped per request | Every sale lost |
+| To keep logins in memory | A fresh instance per request | Constant logouts |
+| A process alive for backups and hourly voucher checks | Nothing running between requests | Neither ever runs |
+
+Use a platform that runs a persistent Node process with a mounted disk —
+**Render, Railway, or Fly.io**. `render.yaml` in the repository root is a working
+Render configuration.
+
+### Before exposing it to the internet
+
+1. **Set a real admin password** (above). The server *refuses to start* in public
+   mode while the default is still in place.
+2. **Attach a persistent disk** and point `DATA_DIR` at it. Without one, the
+   database is destroyed on every deploy. Render's free tier has no disks, so
+   this needs a paid instance (roughly USD 7/month at the time of writing).
+3. **Set `GOLVIA_PUBLIC=1`.** This one switch turns on everything that has to
+   move together for a public instance: binding to `0.0.0.0`, `secure` cookies,
+   and the trust-proxy setting those cookies need behind the platform's HTTPS.
+
+Be aware of what hosting means: the entire customer database — names, phone
+numbers, emails, birthdays, and purchase history — becomes reachable from the
+internet, protected by one shared password. There is a single admin account and
+no rate limiting on the login endpoint.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GOLVIA_PUBLIC` | unset | `1` enables public-deployment mode (see above) |
+| `DATA_DIR` | `server/data` | Where the database and backups live — point at a mounted disk when hosted |
+| `DB_PATH` | `$DATA_DIR/golvia.db` | Override the database file path directly |
+| `PORT` | `4173` | Port to listen on |
+| `HOST` | `127.0.0.1`, or `0.0.0.0` when `GOLVIA_PUBLIC=1` | Interface to bind |
