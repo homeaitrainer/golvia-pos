@@ -101,6 +101,34 @@ cd server && node src/services/setAdminPassword.js admin "your-new-passphrase"
 You can change the username at the same time by passing a different first
 argument. Restart the server afterwards to force a fresh login.
 
+## Using GOLVIA on other devices (phone, tablet, second laptop)
+
+For a sales event where you want to ring up sales from more than one device, you
+do **not** need to deploy anything. Double-click:
+
+    Share GOLVIA to other devices.bat
+
+It starts GOLVIA and prints a public HTTPS link like
+`https://something-random.trycloudflare.com`. Open that on any device, log in as
+usual, and use the till normally.
+
+**Why this instead of hosting it in the cloud:** all of your data lives in one
+SQLite file on this computer. A cloud deployment would get its own separate,
+empty database — sales rung up there would not show up here, and the two stock
+counts would drift apart. That is a real risk during a live event: you would
+oversell items. Tunnelling keeps a single source of truth, so it does not matter
+which device makes the sale.
+
+**What to know:**
+
+- The link only works while that window stays open. Close it and the link dies.
+- You get a **different link every time** you start it. Re-share it each session.
+- This computer must stay on and awake — every device is talking to it.
+- Anyone with the link reaches your login page, so it is only as private as your
+  admin password. Change it first (see above) if that matters to you.
+- One-time install if the tunnel tool is missing:
+  `winget install --id Cloudflare.cloudflared`
+
 ## Hosting it online (optional — read this first)
 
 GOLVIA is built to run **on the shop's own computer**. It stores everything in a
