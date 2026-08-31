@@ -25,22 +25,37 @@ cd ../client && npm install
 From `pos-app/server`, run:
 
 ```bash
-node -e "const {getDb}=require('./src/db/db'); const {createAdmin}=require('./src/services/authService'); createAdmin(getDb(),'admin','changeme');"
+node src/services/setAdminPassword.js admin "choose-a-real-password"
 ```
 
-This creates a user with username `admin` and password `changeme`. Log in with these
-credentials once the app is running, and change the password from Settings.
+This creates (or updates) the single admin account. Use the same command any time
+you want to change the password or the username later — there is no password
+change screen inside the app.
 
 ### 3. Import the stock list
 
 From `pos-app/server`, run the stock importer against your product spreadsheet:
 
 ```bash
-node src/services/importStock.js "<path-to-your-stock-file.xlsx>"
+node src/services/importStock.js "D:\path\to\Golvia Stocks List.xlsx"
 ```
 
-This populates the product catalog (name, barcode, price, quantity, etc.) from the
-`.xlsx` file. Re-run it any time to re-import an updated stock list.
+Use the real path to your file, in quotes if it contains spaces (don't include
+angle brackets — those are just placeholder notation).
+
+This populates the product catalogue from the `.xlsx` file. **Re-running it is
+safe**: existing products and variants are updated rather than duplicated, so you
+can reload an updated spreadsheet whenever prices or descriptions change.
+
+**Stock quantities are deliberately left alone on a re-run.** The database holds
+the live count — reduced by every sale and by audited stock adjustments — while
+the spreadsheet only has whatever was true when you exported it. Overwriting the
+live count with a stale snapshot would silently undo your sales and the till would
+then oversell. When you genuinely want the spreadsheet to win (a stock take, say):
+
+```bash
+node src/services/importStock.js "D:\path\to\Golvia Stocks List.xlsx" --reset-quantities
+```
 
 ### 4. Configure Gmail credentials
 
@@ -91,8 +106,9 @@ cd client && npm run build
 
 ## Changing the admin password
 
-The setup account is `admin` / `changeme123`. Change it — especially if the shop
-computer is shared:
+There is no password-change screen in the app; this command is the supported way.
+Use it whenever you need to rotate the password — especially if the shop computer
+is shared, or if you are sharing the till to other devices:
 
 ```bash
 cd server && node src/services/setAdminPassword.js admin "your-new-passphrase"
