@@ -268,6 +268,27 @@ h3 { font-size: 15px; color: var(--golvia-accent-dark); margin-top: 24px; }
 /* Money and counts line up column-to-column instead of wobbling with digit width. */
 .golvia-num { font-variant-numeric: tabular-nums; }
 
+/* ---- Receipt item list ----
+   Rows rather than a table, because a table cannot flow into CSS columns and a large order needs
+   two columns to stay on one A5 sheet. */
+
+.golvia-receipt-items { font-family: var(--golvia-font-body); font-size: 12px; margin: 4px 0 10px; }
+.golvia-receipt-items.is-two-col {
+  column-count: 2;
+  column-gap: 12px;
+  column-rule: 1px solid var(--golvia-border);
+  font-size: 10.5px;
+}
+.golvia-receipt-item { break-inside: avoid; page-break-inside: avoid; margin-bottom: 7px; }
+.golvia-receipt-item-name { font-weight: 600; line-height: 1.3; }
+.golvia-receipt-item-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--golvia-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Toast ---- */
 
 .golvia-toast {

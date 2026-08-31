@@ -20,6 +20,10 @@ export default function InvoiceReceipt() {
   // with nothing marking the moment the sale went through.
   const [searchParams] = useSearchParams();
   const justCompleted = searchParams.get('justCompleted') === '1';
+
+  // Roughly the point at which a one-column list stops fitting on a single A5 sheet alongside the
+  // header, totals, and footer.
+  const ITEMS_BEFORE_TWO_COLUMNS = 12;
   const [invoice, setInvoice] = useState(null);
   const [returnQuantities, setReturnQuantities] = useState({});
   const [refundPaymentMethod, setRefundPaymentMethod] = useState('Cash');
@@ -38,6 +42,8 @@ export default function InvoiceReceipt() {
   useEffect(() => { loadInvoice(); }, [id]);
 
   if (!invoice) return <p className="golvia-page">Loading...</p>;
+
+  const twoColumnItems = invoice.items.length > ITEMS_BEFORE_TWO_COLUMNS;
 
   function updateReturnQuantity(itemId, value, max) {
     let qty = Number(value);
@@ -86,18 +92,42 @@ export default function InvoiceReceipt() {
     <div className="golvia-page">
       <style>{`
         @media print {
-          @page { size: A5; margin: 10mm; }
-          body * { visibility: hidden; }
-          /* visibility:hidden still reserves layout space, and the sidebar is a 220px flex
-             item -- display:none removes it from the print layout entirely. */
-          .golvia-sidebar, .golvia-topbar, .golvia-sale-done { display: none !important; }
-          .receipt-printable, .receipt-printable * { visibility: visible; }
-          .receipt-printable {
-            position: absolute; left: 0; top: 0;
-            width: 100% !important; max-width: 128mm !important; min-height: 0 !important;
-            box-sizing: border-box; padding: 0 !important; border: none !important; box-shadow: none !important;
+          /* Explicit portrait so the browser's print dialog defaults to A5 rather than the
+             printer's own paper size. */
+          @page { size: A5 portrait; margin: 8mm; }
+
+          /* Everything that is not the receipt is COLLAPSED, not merely hidden. The previous rule
+             used visibility:hidden, which keeps an element's layout box -- so the Process Return
+             and email cards below still generated page height and the print came out as one
+             receipt followed by blank pages. */
+          .golvia-sidebar, .golvia-topbar { display: none !important; }
+          .golvia-page > *:not(.receipt-printable) { display: none !important; }
+
+          /* Unwrap the app chrome so the receipt starts at the top-left of the sheet. Kept in
+             normal flow (not position:absolute) so a long item list paginates onto a second A5
+             page properly instead of being clipped. */
+          .golvia-shell, .golvia-main, .golvia-page {
+            display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: none !important;
+            min-height: 0 !important;
+            background: #fff !important;
           }
-          .receipt-printable button { display: none; }
+          .receipt-printable {
+            position: static !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .receipt-printable button { display: none !important; }
+
+          /* Never split an item across a column or page break. */
+          .golvia-receipt-item { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
 
@@ -130,18 +160,23 @@ export default function InvoiceReceipt() {
         </div>
         <hr style={{ border: 'none', borderTop: '1px solid var(--golvia-border)', margin: '10px 0' }} />
 
-        <table style={{ fontFamily: 'var(--golvia-font-body)' }}>
-          <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
-          <tbody>
-            {invoice.items.map(i => (
-              <tr key={i.id}>
-                <td>{i.product_name} ({i.variant_label})</td>
-                <td>{i.quantity}</td>
-                <td>RM{(i.unit_price * i.quantity).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* A single column of full-width rows is the most readable layout and is kept for normal
+            baskets. Past ITEMS_BEFORE_TWO_COLUMNS a one-column list runs off the bottom of an A5
+            sheet, so the list switches to two narrower columns to keep a large order on one page.
+            A table cannot flow into CSS columns, hence the div-based rows. */}
+        <div className={`golvia-receipt-items${twoColumnItems ? ' is-two-col' : ''}`}>
+          {invoice.items.map(i => (
+            <div className="golvia-receipt-item" key={i.id}>
+              <div className="golvia-receipt-item-name">
+                {i.product_name}{i.variant_label && i.variant_label !== 'N/A' ? ` (${i.variant_label})` : ''}
+              </div>
+              <div className="golvia-receipt-item-line">
+                <span>{i.quantity} × {i.unit_price.toFixed(2)}</span>
+                <span>{(i.unit_price * i.quantity).toFixed(2)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div style={{ fontFamily: 'var(--golvia-font-body)', fontSize: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}><span>Subtotal</span><span>RM{invoice.subtotal.toFixed(2)}</span></div>

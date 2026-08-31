@@ -17,7 +17,11 @@ function refocusScanUnlessMovingToField(e, scanRef) {
   const next = e.relatedTarget;
   const isFormControl = next && ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(next.tagName);
   if (!isFormControl) {
-    scanRef.current?.focus();
+    // preventScroll is essential, not a nicety. The scan input lives at the top of the page, and
+    // focus() scrolls its target into view by default -- so returning focus here after the cashier
+    // touched anything further down (a quantity, a discount, Remove) yanked the whole page back to
+    // the top, forcing them to scroll down again on every single interaction.
+    scanRef.current?.focus({ preventScroll: true });
   }
 }
 
@@ -46,9 +50,10 @@ export default function Checkout() {
   const checkoutBtnRef = useRef(null);
   const totalRef = useRef(null);
   const previousTotal = useRef(0);
+  const latestCustomerSearch = useRef(0);
   const navigate = useNavigate();
 
-  useEffect(() => { scanRef.current?.focus(); }, []);
+  useEffect(() => { scanRef.current?.focus({ preventScroll: true }); }, []);
 
   // Debounced: the search box previously fired one request per keystroke.
   useEffect(() => {
@@ -125,30 +130,54 @@ export default function Checkout() {
     }));
   }
 
-  // Searches name, phone, and email rather than requiring an exact phone match -- staff often know
-  // the customer's name, not their number. Several people can share a name, so anything other than
-  // a single hit shows a chooser instead of guessing.
-  async function searchCustomers() {
+  // Live search over name, phone, and email: typing "Wil" lists every William as you go, rather
+  // than making the cashier finish typing and press a button. Debounced so a five-letter name is
+  // one request instead of five. Skipped entirely once a customer is attached, and below two
+  // characters, where every customer in the shop would match.
+  useEffect(() => {
+    if (customer) return;
     const query = customerQuery.trim();
-    if (!query) return;
-    setLookingUp(true);
+
+    // Every path through this effect bumps the counter, including this early return. An in-flight
+    // request from a longer query would otherwise resolve *after* the list was cleared and put its
+    // matches back -- so typing a name and then deleting it back to one character left stale
+    // customers on screen under a query that no longer matched them.
+    const requestId = ++latestCustomerSearch.current;
+
+    if (query.length < 2) { setCustomerResults([]); setLookingUp(false); return; }
+
+    // Drop the previous matches immediately rather than leaving them under a newer query. These
+    // rows attach a customer to a real sale, so showing matches that do not correspond to what is
+    // in the box is worse than briefly showing nothing.
     setCustomerResults([]);
-    try {
-      const matches = await apiClient.get(`/customers?search=${encodeURIComponent(query)}`);
-      if (matches.length === 0) {
-        setCustomer(null);
-        setError('No customer matches that name or phone — use “+ New” to add them, or check out as guest.');
-      } else if (matches.length === 1) {
-        await selectCustomer(matches[0].id);
-      } else {
-        setCustomerResults(matches);
-        setError('');
-      }
-    } catch {
-      setError('Could not search customers.');
-    } finally {
-      setLookingUp(false);
-    }
+    setLookingUp(true);
+
+    // Debouncing alone does not make this safe: a request already in flight cannot be cancelled,
+    // so a slow earlier response can still land after a newer one. Over the shared tunnel
+    // (variable latency, unlike localhost) that reordering is entirely plausible. Stamp each
+    // request and ignore any response that is no longer the newest.
+    const timer = setTimeout(() => {
+      apiClient.get(`/customers?search=${encodeURIComponent(query)}`)
+        .then((matches) => {
+          if (requestId !== latestCustomerSearch.current) return;
+          setCustomerResults(matches);
+        })
+        .catch(() => {
+          if (requestId !== latestCustomerSearch.current) return;
+          setCustomerResults([]);
+        })
+        .finally(() => {
+          if (requestId === latestCustomerSearch.current) setLookingUp(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [customerQuery, customer]);
+
+  // Enter attaches the customer when the search has narrowed to exactly one -- so a full phone
+  // number can be typed and committed without reaching for the mouse.
+  function selectOnlyMatch() {
+    if (customerResults.length === 1) selectCustomer(customerResults[0].id);
   }
 
   async function selectCustomer(customerId) {
@@ -353,25 +382,37 @@ export default function Checkout() {
             ) : (
               <>
                 <div className="golvia-toolbar">
-                  <input placeholder="Phone or name" value={customerQuery}
+                  {/* autoComplete="off" (plus a non-obvious name) stops Chrome overlaying its own
+                      saved-address dropdown on top of the live results below. */}
+                  <input placeholder="Start typing a name or phone" value={customerQuery}
                     onChange={e => setCustomerQuery(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') searchCustomers(); }}
-                    onBlur={onBlurRefocus} id="checkout-lookup-phone" style={{ flex: 1, minWidth: 110 }} />
-                  <button onClick={searchCustomers} disabled={lookingUp || !customerQuery.trim()}>
-                    {lookingUp ? 'Looking…' : 'Look up'}
-                  </button>
+                    onKeyDown={e => { if (e.key === 'Enter') selectOnlyMatch(); }}
+                    onBlur={onBlurRefocus} id="checkout-lookup-phone"
+                    name="golvia-customer-search" autoComplete="off"
+                    style={{ flex: 1, minWidth: 110 }} />
                   <button onClick={() => {
                     setShowNewCustomerForm(s => !s);
                     if (!showNewCustomerForm) setNewCustomerForm(f => ({ ...f, phone: customerQuery }));
                   }}>{showNewCustomerForm ? 'Cancel' : '+ New'}</button>
                 </div>
 
-                {/* More than one match -- most often two people sharing a name -- so the phone
-                    number is shown to tell them apart rather than the first hit being assumed. */}
+                {lookingUp && <p className="golvia-results-note" style={{ margin: '0 0 8px' }}>Searching…</p>}
+
+                {!lookingUp && customerQuery.trim().length >= 2 && customerResults.length === 0 && (
+                  <p className="golvia-empty" style={{ padding: '4px 0 10px' }}>
+                    No customer matches “{customerQuery.trim()}”. Use “+ New” to add them, or leave
+                    it blank to sell as a guest.
+                  </p>
+                )}
+
+                {/* Names repeat -- the shop already has two Williams -- so each row carries the
+                    phone number to tell them apart rather than the first hit being assumed. */}
                 {customerResults.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
                     <p style={{ fontSize: 12, color: 'var(--golvia-text-muted)', margin: '0 0 6px' }}>
-                      {customerResults.length} matches — pick the right one:
+                      {customerResults.length === 1
+                        ? 'One match — click it, or press Enter:'
+                        : `${customerResults.length} matches — pick the right one:`}
                     </p>
                     <div className="golvia-customer-results">
                       {customerResults.map(c => (
