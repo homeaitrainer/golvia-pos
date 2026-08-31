@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 // The spreadsheet's product_name is a marketplace SEO title -- 100+ characters that wrap to three
 // or four lines in a cart or on a receipt. They follow a consistent shape:
 //
@@ -129,32 +132,66 @@ function importIntoDb(db, groupedProducts, { resetQuantities = false } = {}) {
   return { productsCreated, productsUpdated, variantsCreated, variantsUpdated };
 }
 
-// CLI: node src/services/importStock.js <path-to-xlsx> [--reset-quantities]
+// Looks for the stock spreadsheet in the obvious places so the path can be omitted entirely.
+// Typing a full Windows path is the single most error-prone part of setup: documentation has to
+// show *some* example, and a placeholder like "D:\path\to\file.xlsx" gets pasted verbatim, which
+// then fails with a confusing "file not found" naming a directory that never existed.
+function findStockFileNearby() {
+  const searchDirs = [
+    path.join(__dirname, '../../..'),    // pos-app/
+    path.join(__dirname, '../../../..'), // repository root
+    process.cwd(),
+  ];
+  const found = [];
+  for (const dir of searchDirs) {
+    let entries;
+    try { entries = fs.readdirSync(dir); } catch { continue; }
+    for (const entry of entries) {
+      // Skip Excel's lock files (~$...) and anything that isn't a spreadsheet.
+      if (!entry.toLowerCase().endsWith('.xlsx') || entry.startsWith('~$')) continue;
+      const full = path.resolve(dir, entry);
+      if (!found.includes(full)) found.push(full);
+    }
+  }
+  return found;
+}
+
+// CLI: node src/services/importStock.js [path-to-xlsx] [--reset-quantities]
 if (require.main === module) {
-  const fs = require('fs');
   const xlsx = require('xlsx');
   const { getDb } = require('../db/db');
 
   const args = process.argv.slice(2);
   const resetQuantities = args.includes('--reset-quantities');
-  // Strip surrounding angle brackets/quotes: the usage line shows <path-to-xlsx> as a placeholder,
-  // and it is an easy mistake to paste the brackets in along with the path.
-  const filePath = (args.find(a => !a.startsWith('--')) || '').replace(/^[<"']+|[>"']+$/g, '');
+  // Strip surrounding angle brackets/quotes: documentation renders the argument as a placeholder,
+  // and pasting the brackets along with the path is an easy mistake.
+  let filePath = (args.find(a => !a.startsWith('--')) || '').replace(/^[<"']+|[>"']+$/g, '');
 
   if (!filePath) {
-    console.error('Usage: node src/services/importStock.js <path-to-xlsx> [--reset-quantities]');
-    console.error('');
-    console.error('  Re-running is safe: existing products and variants are updated, not duplicated.');
-    console.error('  Stock quantities are left alone by default, because the database holds the live');
-    console.error('  count (reduced by real sales) while the spreadsheet is only a past snapshot.');
-    console.error('  Pass --reset-quantities to overwrite live stock with the spreadsheet figures.');
-    process.exit(1);
+    const candidates = findStockFileNearby();
+    if (candidates.length === 1) {
+      filePath = candidates[0];
+      console.log(`Using ${filePath}`);
+    } else if (candidates.length === 0) {
+      console.error('No .xlsx file found next to the app, and no path was given.');
+      console.error('');
+      console.error('Usage: node src/services/importStock.js [path-to-xlsx] [--reset-quantities]');
+      console.error('Pass the full path to your stock file, in quotes if it contains spaces.');
+      process.exit(1);
+    } else {
+      console.error('Found more than one spreadsheet — say which one you mean:');
+      for (const candidate of candidates) console.error(`  ${candidate}`);
+      process.exit(1);
+    }
   }
 
   if (!fs.existsSync(filePath)) {
     console.error(`Could not find that file:\n  ${filePath}`);
-    console.error('\nCheck the path. On Windows, wrap it in quotes if it contains spaces, e.g.');
-    console.error('  node src/services/importStock.js "D:\\path\\to\\Golvia Stocks List.xlsx"');
+    const candidates = findStockFileNearby();
+    if (candidates.length > 0) {
+      console.error('\nDid you mean one of these? (or just run the command with no path at all)');
+      for (const candidate of candidates) console.error(`  ${candidate}`);
+    }
     process.exit(1);
   }
 

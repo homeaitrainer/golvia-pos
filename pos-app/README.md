@@ -25,8 +25,11 @@ cd ../client && npm install
 From `pos-app/server`, run:
 
 ```bash
-node src/services/setAdminPassword.js admin "choose-a-real-password"
+node src/services/setAdminPassword.js admin "your-password-here"
 ```
+
+⚠️ Replace `your-password-here` with a password you actually choose — the text
+above is a placeholder, not the password to use. Minimum 8 characters.
 
 This creates (or updates) the single admin account. Use the same command any time
 you want to change the password or the username later — there is no password
@@ -37,11 +40,17 @@ change screen inside the app.
 From `pos-app/server`, run the stock importer against your product spreadsheet:
 
 ```bash
-node src/services/importStock.js "D:\path\to\Golvia Stocks List.xlsx"
+node src/services/importStock.js
 ```
 
-Use the real path to your file, in quotes if it contains spaces (don't include
-angle brackets — those are just placeholder notation).
+That is the whole command — it finds the `.xlsx` sitting next to the app on its
+own and tells you which file it used. Only pass a path if your spreadsheet lives
+somewhere else, in which case give the **real** path (in quotes if it contains
+spaces):
+
+```bash
+node src/services/importStock.js "C:\Users\You\Desktop\GolviaStocksList.xlsx"
+```
 
 This populates the product catalogue from the `.xlsx` file. **Re-running it is
 safe**: existing products and variants are updated rather than duplicated, so you
