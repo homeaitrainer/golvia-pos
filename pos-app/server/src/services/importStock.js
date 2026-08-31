@@ -209,4 +209,4 @@ if (require.main === module) {
     : 'Stock quantities left untouched. Use --reset-quantities to overwrite them from the spreadsheet.');
 }
 
-module.exports = { parseStockRows, importIntoDb, deriveShortName };
+module.exports = { parseStockRows, importIntoDb, deriveShortName, findStockFileNearby };

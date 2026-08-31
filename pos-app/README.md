@@ -63,7 +63,7 @@ live count with a stale snapshot would silently undo your sales and the till wou
 then oversell. When you genuinely want the spreadsheet to win (a stock take, say):
 
 ```bash
-node src/services/importStock.js "D:\path\to\Golvia Stocks List.xlsx" --reset-quantities
+node src/services/importStock.js --reset-quantities
 ```
 
 ### 4. Configure Gmail credentials
@@ -112,6 +112,41 @@ cd client && npm run build
 - The SQLite database lives at `server/data/golvia.db`.
 - A backup is taken automatically once at server startup and then every 24 hours,
   written to `server/data/backups/`.
+
+## Clearing test data before an event
+
+Once you have finished trying the system out and want to open on clean books,
+double-click:
+
+    Reset for event day.bat
+
+It first shows you exactly what would be removed and changes nothing. You then
+have to type RESET to go ahead — anything else cancels.
+
+**Removed:** every sale, invoice line, refund, customer, membership coin balance,
+voucher, and stock adjustment created while testing.
+
+**Kept:** your product catalogue with its prices, barcodes, images and display
+names; your admin login; and your Gmail settings. Those took real work to set up
+and are never touched.
+
+**Stock** is reset to the opening figures in the spreadsheet, because the sales
+that reduced it are being deleted in the same operation. (Pass `--keep-stock` on
+the command line if you have already counted the shelves and the current numbers
+are correct.) Invoice numbering restarts at `INV-YYYY-0001`.
+
+A backup of the database is written to `server/data/backups/` before anything is
+deleted, so a reset done a day early can be undone by copying that file back over
+`server/data/golvia.db`.
+
+From a terminal instead of the .bat file:
+
+```bash
+cd server
+node src/services/resetForGoLive.js            # preview only, changes nothing
+node src/services/resetForGoLive.js --confirm  # actually do it
+```
+
 
 ## Changing the admin password
 
