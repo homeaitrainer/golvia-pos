@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<module>
+    <namespace>GolviaMembership</namespace>
+    <version>1.0.0</version>
+    <author>GOLVIA</author>
+    <name>GOLVIA Membership</name>
+    <description>
+        <locale lang="en">GOLVIA membership, lifetime tiers, coins, and auditable rewards.</locale>
+    </description>
+    <core min-version="6.2.2" />
+</module>
