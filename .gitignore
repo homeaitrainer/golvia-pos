@@ -9,3 +9,15 @@ dist/
 .agents/
 .claude/
 skills-lock.json
+
+# NexoPOS runtime secrets and generated state
+nexopos/.env
+nexopos/.env.*
+!nexopos/.env.example
+nexopos/storage/logs/*.log
+
+# cPanel verification output and database backups
+ops/cpanel/cpanel-preflight.json
+backups/
+*.sql
+*.sql.gz
