@@ -67,6 +67,9 @@
       <directory suffix="ProviderRoutePermissionTest.php">./tests/Feature</directory>
       <directory suffix="ApiRoutePermissionTest.php">./tests/Feature</directory>
     </testsuite>
+    <testsuite name="Golvia">
+      <directory suffix="Test.php">./tests/Feature/Golvia</directory>
+    </testsuite>
   </testsuites>
   <coverage>
     <report>
