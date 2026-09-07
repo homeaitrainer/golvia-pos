@@ -16,8 +16,9 @@ nexopos/.env.*
 !nexopos/.env.example
 nexopos/storage/logs/*.log
 
-# cPanel verification output and database backups
+# cPanel verification output, generated state, and database backups
 ops/cpanel/cpanel-preflight.json
+ops/cpanel/.phpunit.result.cache
 backups/
 *.sql
 *.sql.gz
