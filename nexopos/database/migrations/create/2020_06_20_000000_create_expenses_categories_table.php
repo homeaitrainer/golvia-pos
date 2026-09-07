@@ -1,0 +1,46 @@
+<?php
+
+/**
+ * Table Migration
+ **/
+
+use App\Classes\Schema;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        if ( ! Schema::hasTable( 'nexopos_transactions_accounts' ) ) {
+            Schema::createIfMissing( 'nexopos_transactions_accounts', function ( Blueprint $table ) {
+                $table->bigIncrements( 'id' );
+                $table->string( 'name' );
+                $table->string( 'account' )->default( 0 );
+                $table->integer( 'sub_category_id' )->nullable();
+                $table->string( 'category_identifier' )->nullable();
+                $table->text( 'description' )->nullable();
+                $table->integer( 'author_id' );
+                $table->string( 'uuid' )->nullable();
+                $table->string( 'system_identifier' )->nullable();
+                $table->unique( 'system_identifier', 'transactions_system_identifier_unique' );
+                $table->timestamps();
+            } );
+        }
+    }
+
+    /**
+     * Reverse the migrations.
+     *
+     * @return void
+     */
+    public function down()
+    {
+        Schema::dropIfExists( 'nexopos_transactions_accounts' );
+    }
+};

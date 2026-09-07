@@ -1,0 +1,185 @@
+<?php
+
+/**
+ * NexoPOS Controller
+ *
+ * @since  1.0
+ **/
+
+namespace App\Http\Controllers;
+
+use App\Models\Customer;
+use App\Models\DashboardDay;
+use App\Models\Notification;
+use App\Models\Order;
+use App\Models\Role;
+use App\Services\DateService;
+use App\Services\ModulesService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\View;
+
+class DashboardController extends Controller
+{
+    public function __construct(
+        protected DateService $dateService
+    ) {
+        // ...
+    }
+
+    public function home()
+    {
+        return View::make( 'pages.dashboard.home', [
+            'title' => __( 'Dashboard' ),
+        ] );
+    }
+
+    public function getCards()
+    {
+        $todayStarts = $this->dateService->copy()->startOfDay()->toDateTimeString();
+        $todayEnds = $this->dateService->copy()->endOfDay()->toDateTimeString();
+
+        return DashboardDay::from( $todayStarts )
+            ->to( $todayEnds )
+            ->first() ?: [];
+    }
+
+    public function getBestCustomers()
+    {
+        return Customer::orderBy( 'purchases_amount', 'desc' )->limit( 5 )->get();
+    }
+
+    public function dispatchTelemetry()
+    {
+        $version = config( 'nexopos.version' );
+        $modules = app()->make( ModulesService::class )->get();
+
+        $modulesData = [];
+        foreach ( $modules as $module ) {
+            if ( $module['enabled'] ?? false ) {
+                $modulesData[] = [
+                    'namespace' => $module['namespace'],
+                    'version' => $module['version'],
+                ];
+            }
+        }
+
+        $payload = [
+            'version' => $version,
+            'modules' => $modulesData,
+            'host' => request()->getHost(),
+        ];
+
+        try {
+            Http::post( 'https://my.nexopos.com/api/nexoplatform/telemetry', $payload );
+            ns()->option->set( 'ns_telemetry_last_sent', now()->toDateTimeString() );
+        } catch ( \Exception $e ) {
+            Log::error( 'Telemetry failed: ' . $e->getMessage() );
+
+            return response()->json( ['status' => 'error', 'message' => 'Telemetry failed.'], 500 );
+        }
+
+        return response()->json( ['status' => 'success'] );
+    }
+
+    public function getRecentsOrders()
+    {
+        return Order::orderBy( 'created_at', 'desc' )->with( 'user' )->limit( 10 )->get();
+    }
+
+    public function getBestCashiers()
+    {
+        return Role::namespace( 'nexopos.store.cashier' )
+            ->users()
+            ->orderBy( 'total_sales', 'desc' )
+            ->limit( 10 )
+            ->get();
+    }
+
+    public function getWeekReports()
+    {
+        $weekMap = [
+            0 => [
+                'label' => __( 'Sunday' ),
+                'value' => 'SU',
+            ],
+            1 => [
+                'label' => __( 'Monday' ),
+                'value' => 'MO',
+            ],
+            2 => [
+                'label' => __( 'Tuesday' ),
+                'value' => 'TU',
+            ],
+            3 => [
+                'label' => __( 'Wednesday' ),
+                'value' => 'WE',
+            ],
+            4 => [
+                'label' => __( 'Thursday' ),
+                'value' => 'TH',
+            ],
+            5 => [
+                'label' => __( 'Friday' ),
+                'value' => 'FR',
+            ],
+            6 => [
+                'label' => __( 'Saturday' ),
+                'value' => 'SA',
+            ],
+        ];
+
+        $currentWeekStarts = $this->dateService->copy()->startOfWeek();
+        $currentWeekEnds = $this->dateService->copy()->endOfWeek();
+        $lastWeekStarts = $currentWeekStarts->copy()->subDay()->startOfWeek();
+        $lastWeekEnds = $currentWeekStarts->copy()->subDay()->endOfWeek();
+
+        DashboardDay::from( $currentWeekStarts->toDateTimeString() )
+            ->to( $currentWeekEnds->toDateTimeString() )
+            ->get()
+            ->each( function ( $report ) use ( &$weekMap ) {
+                if ( ! isset( $weekMap[ Carbon::parse( $report->range_starts )->dayOfWeek ][ 'current' ][ 'entries' ] ) ) {
+                    $weekMap[ Carbon::parse( $report->range_starts )->dayOfWeek ][ 'current' ][ 'entries' ] = [];
+                }
+
+                $weekMap[ Carbon::parse( $report->range_starts )->dayOfWeek ][ 'current' ][ 'entries' ][] = $report;
+            } );
+
+        DashboardDay::from( $lastWeekStarts->toDateTimeString() )
+            ->to( $lastWeekEnds->toDateTimeString() )
+            ->get()
+            ->each( function ( $report ) use ( &$weekMap ) {
+                if ( ! isset( $weekMap[ Carbon::parse( $report->range_starts )->dayOfWeek ][ 'previous' ][ 'entries' ] ) ) {
+                    $weekMap[ Carbon::parse( $report->range_starts )->dayOfWeek ][ 'previous' ][ 'entries' ] = [];
+                }
+
+                $weekMap[ Carbon::parse( $report->range_starts )->dayOfWeek ][ 'previous' ][ 'entries' ][] = $report;
+            } );
+
+        return [
+            'range_starts' => $lastWeekStarts->toDateTimeString(),
+            'range_ends' => $currentWeekEnds->toDateTimeString(),
+            'result' => $weekMap,
+        ];
+    }
+
+    public function createSymbolicLinks( Request $request )
+    {
+        // we might delete the notification that is provided on the query parameters
+        if ( $request->has( 'notification_id' ) ) {
+            $notification = Notification::find( $request->get( 'notification_id' ) );
+            if ( $notification ) {
+                $notification->delete();
+            }
+        }
+
+        ns()->createSymbolicLinks();
+
+        return [
+            'message' => __( 'Symbolic links have been created successfully.' ),
+            'status' => 'success',
+        ];
+    }
+}
