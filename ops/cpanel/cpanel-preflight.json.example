@@ -1,0 +1,21 @@
+{
+  "compatible": true,
+  "checks": [
+    {"name": "PHP 8.2 or newer", "passed": true, "detail": "8.3.15"},
+    {"name": "Required PHP extensions", "passed": true, "detail": "all loaded"},
+    {"name": "Supported database", "passed": true, "detail": "mariadb 10.11.8"},
+    {"name": "Composer 2", "passed": true, "detail": "required for locked dependency installation"},
+    {"name": "Writable Laravel storage", "passed": true, "detail": "storage must be writable"},
+    {"name": "Writable Laravel cache", "passed": true, "detail": "bootstrap/cache must be writable"},
+    {"name": "Isolated public document root", "passed": true, "detail": "only nexopos/public may be web-accessible"},
+    {"name": "Cron Jobs", "passed": true, "detail": "Laravel scheduler must run"},
+    {"name": "HTTPS", "passed": true, "detail": "production and staging require HTTPS"},
+    {"name": "Apache URL rewriting", "passed": true, "detail": "Laravel front controller requires rewriting"}
+  ],
+  "inventory": {
+    "php_version": "8.3.15",
+    "extensions": ["curl", "fileinfo", "gd", "intl", "mbstring", "openssl", "pdo_mysql", "zip"],
+    "database_driver": "mariadb",
+    "database_version": "10.11.8"
+  }
+}

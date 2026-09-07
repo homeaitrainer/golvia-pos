@@ -54,4 +54,24 @@ class PreflightEvaluatorTest extends TestCase
         $this->assertContains('Isolated public document root', $failedNames);
         $this->assertContains('Cron Jobs', $failedNames);
     }
+
+    // Catches a credential-leak mutation that includes a database password in the evaluator result.
+    public function test_result_is_safe_json_without_credentials(): void
+    {
+        $result = PreflightEvaluator::evaluate([
+            'php_version' => '8.3.15',
+            'extensions' => ['curl', 'fileinfo', 'gd', 'intl', 'mbstring', 'openssl', 'pdo_mysql', 'zip'],
+            'database_driver' => 'mysql',
+            'database_version' => '8.4.3',
+            'commands' => ['composer' => true, 'php' => true],
+            'paths' => ['storage_writable' => true, 'cache_writable' => true, 'public_root_isolated' => true],
+            'cron_available' => true,
+            'ssl_available' => true,
+            'url_rewrite_available' => true,
+        ]);
+
+        $json = json_encode($result, JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('password', strtolower($json));
+        $this->assertStringNotContainsString('proper15_golviauser', $json);
+    }
 }
