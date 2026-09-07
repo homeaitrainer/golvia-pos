@@ -51,4 +51,9 @@ class MembershipRuleVersion extends Model
         });
         static::deleting(fn () => throw new LogicException('Membership rule versions are retained, not deleted.'));
     }
+
+    public function newEloquentBuilder($query): RuleVersionBuilder
+    {
+        return new RuleVersionBuilder($query);
+    }
 }

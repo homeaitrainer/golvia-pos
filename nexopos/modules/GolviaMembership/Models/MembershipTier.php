@@ -23,4 +23,9 @@ class MembershipTier extends Model
     {
         static::deleting(fn () => throw new LogicException('Membership tiers are retained and deactivated, not deleted.'));
     }
+
+    public function newEloquentBuilder($query): RetainedRecordBuilder
+    {
+        return new RetainedRecordBuilder($query);
+    }
 }

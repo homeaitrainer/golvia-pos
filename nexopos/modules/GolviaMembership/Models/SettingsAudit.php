@@ -22,4 +22,9 @@ class SettingsAudit extends Model
         static::updating(fn () => throw new LogicException('Settings audits are append-only.'));
         static::deleting(fn () => throw new LogicException('Settings audits are append-only.'));
     }
+
+    public function newEloquentBuilder($query): AppendOnlyBuilder
+    {
+        return new AppendOnlyBuilder($query);
+    }
 }

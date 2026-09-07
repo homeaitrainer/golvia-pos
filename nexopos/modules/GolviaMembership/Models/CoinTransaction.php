@@ -3,6 +3,7 @@
 namespace Modules\GolviaMembership\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use LogicException;
 
 class CoinTransaction extends Model
@@ -50,5 +51,11 @@ class CoinTransaction extends Model
 
         static::updating(fn () => throw new LogicException('Coin transactions are append-only.'));
         static::deleting(fn () => throw new LogicException('Coin transactions are append-only.'));
+    }
+
+    public function newEloquentBuilder($query): AppendOnlyBuilder
+    {
+        /** @var QueryBuilder $query */
+        return new AppendOnlyBuilder($query);
     }
 }

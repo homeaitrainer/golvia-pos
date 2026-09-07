@@ -18,6 +18,8 @@ return new class extends Migration
         'golvia.membership.manage-settings' => ['Manage GOLVIA membership settings', 'Configure membership earning and redemption rules.'],
     ];
 
+    private const PERMISSION_OWNERSHIP_MARKER = '[owner:golvia-membership:1]';
+
     public function up(): void
     {
         $this->createTables();
@@ -30,6 +32,7 @@ return new class extends Migration
         if (Schema::hasTable('nexopos_permissions')) {
             Permission::query()
                 ->whereIn('namespace', array_keys(self::PERMISSIONS))
+                ->where('description', 'like', '%' . self::PERMISSION_OWNERSHIP_MARKER . '%')
                 ->get()
                 ->each(function (Permission $permission): void {
                     $permission->removeFromRoles();
@@ -54,8 +57,8 @@ return new class extends Migration
                 $table->unsignedBigInteger('coins_earned');
                 $table->unsignedBigInteger('redemption_coins');
                 $table->decimal('redemption_value', 12, 2);
-                $table->string('activation_state', 24)->index();
-                $table->string('recalculation_state', 24)->index();
+                $table->enum('activation_state', ['draft', 'active', 'retired'])->index();
+                $table->enum('recalculation_state', ['pending', 'running', 'completed', 'failed'])->index();
                 $table->unsignedBigInteger('actor_id')->nullable();
                 $table->timestamp('effective_at')->index();
                 $table->timestamps();
@@ -86,7 +89,7 @@ return new class extends Migration
                 $table->unsignedBigInteger('customer_id')->unique();
                 $table->string('membership_number', 64)->unique();
                 $table->string('normalized_phone', 32)->nullable()->index();
-                $table->string('status', 24)->default('active')->index();
+                $table->enum('status', ['active', 'locked', 'deactivated'])->default('active')->index();
                 $table->bigInteger('available_coin_balance')->default(0);
                 $table->bigInteger('lifetime_earned_coins')->default(0);
                 $table->unsignedBigInteger('current_tier_id')->index();
@@ -100,7 +103,7 @@ return new class extends Migration
                 $table->bigIncrements('id');
                 $table->unsignedBigInteger('account_id')->index();
                 $table->unsignedBigInteger('customer_id')->index();
-                $table->string('action', 32)->index();
+                $table->enum('action', ['earn', 'redeem', 'restore', 'reverse_earn', 'adjust'])->index();
                 $table->bigInteger('balance_delta');
                 $table->bigInteger('lifetime_delta');
                 $table->bigInteger('balance_after');
@@ -111,8 +114,8 @@ return new class extends Migration
                 $table->char('payload_fingerprint', 64);
                 $table->text('reason')->nullable();
                 $table->unsignedBigInteger('author_id')->nullable();
-                $table->unsignedBigInteger('rule_version_id')->nullable()->index();
-                $table->json('rule_version_snapshot')->nullable();
+                $table->unsignedBigInteger('rule_version_id')->index();
+                $table->json('rule_version_snapshot');
                 $table->json('metadata')->nullable();
                 $table->timestamps();
 
@@ -172,10 +175,13 @@ return new class extends Migration
         }
 
         foreach (self::PERMISSIONS as $namespace => [$name, $description]) {
-            Permission::query()->firstOrCreate(
-                ['namespace' => $namespace],
-                ['name' => $name, 'description' => $description]
-            );
+            if (! Permission::query()->where('namespace', $namespace)->exists()) {
+                Permission::query()->create([
+                    'namespace' => $namespace,
+                    'name' => $name,
+                    'description' => $description . ' ' . self::PERMISSION_OWNERSHIP_MARKER,
+                ]);
+            }
         }
 
         $all = array_keys(self::PERMISSIONS);
@@ -188,6 +194,16 @@ return new class extends Migration
 
         $cashier = Role::namespace(Role::STORECASHIER);
         if ($cashier instanceof Role) {
+            $administrativePermissionIds = Permission::query()
+                ->where('namespace', 'like', 'golvia.membership.%')
+                ->where('namespace', '!=', 'golvia.membership.pos-summary')
+                ->pluck('id');
+
+            DB::table('nexopos_role_permission')
+                ->where('role_id', $cashier->id)
+                ->whereIn('permission_id', $administrativePermissionIds)
+                ->delete();
+
             $cashier->addPermissions('golvia.membership.pos-summary');
         }
     }
