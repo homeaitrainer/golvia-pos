@@ -38,6 +38,7 @@ class MembershipRuleVersion extends Model
     {
         static::updating(function (self $version): void {
             if ($version->isDirty([
+                'version_key',
                 'enabled',
                 'earning_spend_amount',
                 'coins_earned',

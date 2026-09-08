@@ -7,6 +7,7 @@ use LogicException;
 class RuleVersionBuilder extends RetainedRecordBuilder
 {
     private const IMMUTABLE_FIELDS = [
+        'version_key',
         'enabled',
         'earning_spend_amount',
         'coins_earned',

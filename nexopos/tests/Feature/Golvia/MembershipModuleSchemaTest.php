@@ -6,6 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Services\ModulesService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use LogicException;
@@ -16,10 +17,13 @@ use Modules\GolviaMembership\Models\MembershipRuleVersion;
 use Modules\GolviaMembership\Models\MembershipTier;
 use Modules\GolviaMembership\Models\SettingsAudit;
 use Modules\GolviaMembership\Providers\GolviaMembershipServiceProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 class MembershipModuleSchemaTest extends TestCase
 {
+    use DatabaseTransactions;
+
     private const MIGRATION = 'modules/GolviaMembership/Migrations/2026_09_07_000001_create_membership_foundation.php';
 
     private array $tables = [
@@ -29,6 +33,12 @@ class MembershipModuleSchemaTest extends TestCase
         'golvia_membership_tiers',
         'golvia_membership_rule_versions',
     ];
+
+    private int $sentinelRoleId;
+
+    private int $sentinelPermissionId;
+
+    private int $sentinelUserId;
 
     protected function setUp(): void
     {
@@ -41,30 +51,29 @@ class MembershipModuleSchemaTest extends TestCase
         }
 
         $this->ensureAuthorizationTablesExist();
-        DB::table('nexopos_role_permission')->delete();
-        Permission::query()->where('namespace', 'like', 'golvia.membership.%')->delete();
-        Permission::query()->where('namespace', 'example.unrelated')->delete();
-        Permission::query()->where('namespace', 'example.cashier.permission')->delete();
-        Role::query()->whereIn('namespace', [Role::ADMIN, Role::STOREADMIN, Role::STORECASHIER])->delete();
+        $this->ensureUserRelationshipTablesExist();
 
         foreach ([
             Role::ADMIN => 'Administrator',
             Role::STOREADMIN => 'Store Administrator',
             Role::STORECASHIER => 'Store Cashier',
         ] as $namespace => $name) {
-            Role::query()->create([
-                'namespace' => $namespace,
-                'name' => $name,
-                'description' => $name,
-            ]);
+            Role::query()->firstOrCreate(
+                ['namespace' => $namespace],
+                ['name' => $name, 'description' => $name]
+            );
         }
+
+        $this->createCoreAuthorizationSentinel();
     }
 
     protected function tearDown(): void
     {
-        foreach ($this->tables as $table) {
-            Schema::dropIfExists($table);
+        if (Schema::hasTable('golvia_membership_rule_versions')) {
+            $this->migration()->down();
         }
+
+        $this->assertCoreAuthorizationSentinelExists();
 
         parent::tearDown();
     }
@@ -99,6 +108,7 @@ class MembershipModuleSchemaTest extends TestCase
         }
 
         $rule = MembershipRuleVersion::query()->sole();
+        $this->assertSame('default-2026-09-07-v1', $rule->version_key);
         $this->assertSame('3.00', $rule->earning_spend_amount);
         $this->assertSame(1, $rule->coins_earned);
         $this->assertSame(100, $rule->redemption_coins);
@@ -294,19 +304,60 @@ class MembershipModuleSchemaTest extends TestCase
         }
     }
 
-    public function test_retained_models_reject_bulk_eloquent_updates_and_deletes(): void
+    public function test_append_only_builder_blocks_all_laravel_update_paths_without_changing_rows(): void
     {
         $this->migrateUp();
         $tier = MembershipTier::query()->where('key', 'white')->firstOrFail();
         $account = MembershipAccount::query()->create($this->accountAttributes(450, 'GOL-000450', $tier->id));
-        CoinTransaction::query()->create(
+        $transaction = CoinTransaction::query()->create(
             $this->transactionAttributes($account->id, 450, 'earn', 'order', 'bulk-guard', 'bulk-guard')
         );
+        $before = (array) DB::table('golvia_coin_transactions')->where('id', $transaction->id)->first();
 
         foreach ([
             fn () => CoinTransaction::query()->update(['reason' => 'tampered']),
+            fn () => CoinTransaction::query()->increment('balance_delta'),
+            fn () => CoinTransaction::query()->decrement('balance_delta'),
+            fn () => CoinTransaction::query()->incrementEach(['balance_delta' => 2, 'lifetime_delta' => 2]),
+            fn () => CoinTransaction::query()->decrementEach(['balance_delta' => 2, 'lifetime_delta' => 2]),
+            fn () => CoinTransaction::query()->touch(),
+            fn () => CoinTransaction::query()->upsert(
+                [['id' => $transaction->id, 'reason' => 'tampered']],
+                ['id'],
+                ['reason']
+            ),
+            fn () => CoinTransaction::query()->updateOrInsert(
+                ['id' => $transaction->id],
+                ['reason' => 'tampered']
+            ),
+            fn () => CoinTransaction::query()->updateOrCreate(
+                ['id' => $transaction->id],
+                ['reason' => 'tampered']
+            ),
+            fn () => CoinTransaction::query()->incrementOrCreate(
+                ['id' => $transaction->id],
+                'balance_delta'
+            ),
             fn () => CoinTransaction::query()->delete(),
+            fn () => CoinTransaction::query()->forceDelete(),
+            fn () => CoinTransaction::query()->truncate(),
+        ] as $mutation) {
+            $this->assertAppendOnlyMutationRejected($mutation, $transaction->id, $before);
+        }
+
+        CoinTransaction::query()->create(
+            $this->transactionAttributes($account->id, 450, 'earn', 'order', 'second-insert', 'second-insert')
+        );
+        $this->assertSame(2, CoinTransaction::query()->count());
+    }
+
+    public function test_other_retained_models_reject_forbidden_bulk_mutations(): void
+    {
+        $this->migrateUp();
+
+        foreach ([
             fn () => SettingsAudit::query()->delete(),
+            fn () => MembershipRuleVersion::query()->update(['version_key' => 'tampered']),
             fn () => MembershipRuleVersion::query()->update(['earning_spend_amount' => '4.00']),
             fn () => MembershipRuleVersion::query()->delete(),
             fn () => MembershipTier::query()->delete(),
@@ -371,25 +422,67 @@ class MembershipModuleSchemaTest extends TestCase
         $this->assertDatabaseMissing('nexopos_permissions', ['namespace' => 'golvia.membership.read']);
     }
 
-    public function test_rollback_preserves_preexisting_permission_namespace_collisions_across_repeated_cycles(): void
+    public function test_repeated_up_repairs_an_incomplete_default_tier_seed(): void
     {
-        Permission::query()->create([
+        $migration = $this->migration();
+        $migration->up();
+        $rule = MembershipRuleVersion::query()->where('version_key', 'default-2026-09-07-v1')->sole();
+
+        DB::table('golvia_membership_tiers')
+            ->where('rule_version_id', $rule->id)
+            ->whereIn('key', ['silver', 'gold'])
+            ->delete();
+
+        $migration->up();
+
+        $this->assertSame(
+            ['gold', 'platinum', 'silver', 'white'],
+            MembershipTier::query()
+                ->where('rule_version_id', $rule->id)
+                ->orderBy('key')
+                ->pluck('key')
+                ->all()
+        );
+        $this->assertSame(1, MembershipRuleVersion::query()->where('version_key', 'default-2026-09-07-v1')->count());
+    }
+
+    public function test_permission_collision_fails_before_role_mutation_and_preserves_external_ownership(): void
+    {
+        $external = Permission::query()->create([
+            'namespace' => 'golvia.membership.read',
+            'name' => 'Externally owned membership reader',
+            'description' => 'Created outside the GOLVIA module.',
+        ]);
+        Role::namespace(Role::STOREADMIN)->addPermissions($external);
+        $pivotsBefore = DB::table('nexopos_role_permission')
+            ->orderBy('role_id')
+            ->orderBy('permission_id')
+            ->get()
+            ->map(fn ($pivot) => (array) $pivot)
+            ->all();
+
+        $migration = $this->migration();
+        try {
+            $migration->up();
+            $this->fail('An externally owned permission namespace collision must fail closed.');
+        } catch (RuntimeException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame($pivotsBefore, DB::table('nexopos_role_permission')
+            ->orderBy('role_id')
+            ->orderBy('permission_id')
+            ->get()
+            ->map(fn ($pivot) => (array) $pivot)
+            ->all());
+        $this->assertDatabaseHas('nexopos_permissions', [
             'namespace' => 'golvia.membership.read',
             'name' => 'Externally owned membership reader',
             'description' => 'Created outside the GOLVIA module.',
         ]);
 
-        for ($cycle = 0; $cycle < 2; $cycle++) {
-            $migration = $this->migration();
-            $migration->up();
-            $migration->down();
-
-            $this->assertDatabaseHas('nexopos_permissions', [
-                'namespace' => 'golvia.membership.read',
-                'name' => 'Externally owned membership reader',
-                'description' => 'Created outside the GOLVIA module.',
-            ]);
-        }
+        $migration->down();
+        $this->assertDatabaseHas('nexopos_permissions', ['id' => $external->id]);
     }
 
     private function migrateUp(): void
@@ -453,6 +546,83 @@ class MembershipModuleSchemaTest extends TestCase
                 $table->timestamps();
             });
         }
+    }
+
+    private function ensureUserRelationshipTablesExist(): void
+    {
+        if (! Schema::hasTable('nexopos_users')) {
+            Schema::create('nexopos_users', function (Blueprint $table): void {
+                $table->increments('id');
+                $table->string('username');
+                $table->boolean('active')->default(false);
+                $table->string('email')->unique();
+                $table->string('password');
+                $table->timestamps();
+            });
+        }
+
+        if (! Schema::hasTable('nexopos_users_roles_relations')) {
+            Schema::create('nexopos_users_roles_relations', function (Blueprint $table): void {
+                $table->id();
+                $table->integer('role_id');
+                $table->integer('user_id');
+                $table->timestamps();
+            });
+        }
+    }
+
+    private function createCoreAuthorizationSentinel(): void
+    {
+        $now = now();
+        $this->sentinelRoleId = (int) DB::table('nexopos_roles')->insertGetId([
+            'namespace' => 'nexopos.test.sentinel-role.' . spl_object_id($this),
+            'name' => 'Core sentinel role ' . spl_object_id($this),
+            'description' => 'Proves module tests preserve core authorization fixtures.',
+            'locked' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $this->sentinelPermissionId = (int) DB::table('nexopos_permissions')->insertGetId([
+            'namespace' => 'nexopos.test.sentinel-permission.' . spl_object_id($this),
+            'name' => 'Core sentinel permission ' . spl_object_id($this),
+            'description' => 'Proves role-permission pivots survive module tests.',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $this->sentinelUserId = (int) DB::table('nexopos_users')->insertGetId([
+            'username' => 'golvia-sentinel-' . spl_object_id($this),
+            'active' => true,
+            'email' => 'golvia-sentinel-' . spl_object_id($this) . '@example.test',
+            'password' => 'not-used',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('nexopos_role_permission')->insert([
+            'role_id' => $this->sentinelRoleId,
+            'permission_id' => $this->sentinelPermissionId,
+        ]);
+        DB::table('nexopos_users_roles_relations')->insert([
+            'role_id' => $this->sentinelRoleId,
+            'user_id' => $this->sentinelUserId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    private function assertCoreAuthorizationSentinelExists(): void
+    {
+        $this->assertTrue(DB::table('nexopos_roles')->where('id', $this->sentinelRoleId)->exists());
+        $this->assertTrue(DB::table('nexopos_permissions')->where('id', $this->sentinelPermissionId)->exists());
+        $this->assertTrue(DB::table('nexopos_users')->where('id', $this->sentinelUserId)->exists());
+        $this->assertTrue(DB::table('nexopos_role_permission')->where([
+            'role_id' => $this->sentinelRoleId,
+            'permission_id' => $this->sentinelPermissionId,
+        ])->exists());
+        $this->assertTrue(DB::table('nexopos_users_roles_relations')->where([
+            'role_id' => $this->sentinelRoleId,
+            'user_id' => $this->sentinelUserId,
+        ])->exists());
     }
 
     private function assertRoleHasPermissions(string $roleNamespace, array $permissions): void
@@ -524,6 +694,20 @@ class MembershipModuleSchemaTest extends TestCase
         } catch (\Illuminate\Database\QueryException) {
             $this->assertTrue(true);
         }
+    }
+
+    private function assertAppendOnlyMutationRejected(callable $mutation, int $transactionId, array $before): void
+    {
+        try {
+            $mutation();
+            $this->fail('Append-only Eloquent mutation must be rejected.');
+        } catch (LogicException) {
+            $this->assertTrue(true);
+        }
+
+        $after = (array) DB::table('golvia_coin_transactions')->where('id', $transactionId)->first();
+        $this->assertSame($before, $after);
+        $this->assertSame(1, DB::table('golvia_coin_transactions')->count());
     }
 
     private function sqliteColumns(string $table): array

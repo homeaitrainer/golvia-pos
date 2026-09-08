@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    private const DEFAULT_RULE_VERSION = 'default-2026-09-07-v1';
+
     private const PERMISSIONS = [
         'golvia.membership.pos-summary' => ['GOLVIA membership POS summary', 'View customer membership summary in the POS.'],
         'golvia.membership.read' => ['Read GOLVIA membership', 'View membership accounts, tiers, and coin activity.'],
@@ -52,6 +54,7 @@ return new class extends Migration
         if (! Schema::hasTable('golvia_membership_rule_versions')) {
             Schema::create('golvia_membership_rule_versions', function (Blueprint $table): void {
                 $table->bigIncrements('id');
+                $table->string('version_key', 80)->unique();
                 $table->boolean('enabled')->default(true);
                 $table->decimal('earning_spend_amount', 12, 2);
                 $table->unsignedBigInteger('coins_earned');
@@ -141,31 +144,36 @@ return new class extends Migration
 
     private function seedDefaults(): void
     {
-        if (DB::table('golvia_membership_rule_versions')->exists()) {
-            return;
-        }
+        DB::transaction(function (): void {
+            $now = now();
+            DB::table('golvia_membership_rule_versions')->insertOrIgnore([
+                'version_key' => self::DEFAULT_RULE_VERSION,
+                'enabled' => true,
+                'earning_spend_amount' => '3.00',
+                'coins_earned' => 1,
+                'redemption_coins' => 100,
+                'redemption_value' => '1.00',
+                'activation_state' => 'active',
+                'recalculation_state' => 'completed',
+                'actor_id' => null,
+                'effective_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
 
-        $now = now();
-        $ruleVersionId = DB::table('golvia_membership_rule_versions')->insertGetId([
-            'enabled' => true,
-            'earning_spend_amount' => '3.00',
-            'coins_earned' => 1,
-            'redemption_coins' => 100,
-            'redemption_value' => '1.00',
-            'activation_state' => 'active',
-            'recalculation_state' => 'completed',
-            'actor_id' => null,
-            'effective_at' => $now,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+            $ruleVersionId = (int) DB::table('golvia_membership_rule_versions')
+                ->where('version_key', self::DEFAULT_RULE_VERSION)
+                ->value('id');
 
-        DB::table('golvia_membership_tiers')->insert([
-            $this->tier($ruleVersionId, 'white', 'White', 0, 3000, 1, $now),
-            $this->tier($ruleVersionId, 'silver', 'Silver', 3001, 5000, 2, $now),
-            $this->tier($ruleVersionId, 'gold', 'Gold', 5001, 12000, 3, $now),
-            $this->tier($ruleVersionId, 'platinum', 'Platinum', 12001, null, 4, $now),
-        ]);
+            foreach ([
+                $this->tier($ruleVersionId, 'white', 'White', 0, 3000, 1, $now),
+                $this->tier($ruleVersionId, 'silver', 'Silver', 3001, 5000, 2, $now),
+                $this->tier($ruleVersionId, 'gold', 'Gold', 5001, 12000, 3, $now),
+                $this->tier($ruleVersionId, 'platinum', 'Platinum', 12001, null, 4, $now),
+            ] as $tier) {
+                DB::table('golvia_membership_tiers')->insertOrIgnore($tier);
+            }
+        });
     }
 
     private function seedPermissions(): void
@@ -174,38 +182,55 @@ return new class extends Migration
             return;
         }
 
-        foreach (self::PERMISSIONS as $namespace => [$name, $description]) {
-            if (! Permission::query()->where('namespace', $namespace)->exists()) {
-                Permission::query()->create([
-                    'namespace' => $namespace,
-                    'name' => $name,
-                    'description' => $description . ' ' . self::PERMISSION_OWNERSHIP_MARKER,
-                ]);
+        $collision = Permission::query()
+            ->whereIn('namespace', array_keys(self::PERMISSIONS))
+            ->get()
+            ->first(fn (Permission $permission) => ! str_contains(
+                (string) $permission->description,
+                self::PERMISSION_OWNERSHIP_MARKER
+            ));
+
+        if ($collision instanceof Permission) {
+            throw new \RuntimeException(sprintf(
+                'Cannot install GOLVIA Membership: permission namespace "%s" is owned externally.',
+                $collision->namespace
+            ));
+        }
+
+        DB::transaction(function (): void {
+            foreach (self::PERMISSIONS as $namespace => [$name, $description]) {
+                if (! Permission::query()->where('namespace', $namespace)->exists()) {
+                    Permission::query()->create([
+                        'namespace' => $namespace,
+                        'name' => $name,
+                        'description' => $description . ' ' . self::PERMISSION_OWNERSHIP_MARKER,
+                    ]);
+                }
             }
-        }
 
-        $all = array_keys(self::PERMISSIONS);
-        foreach ([Role::ADMIN, Role::STOREADMIN] as $namespace) {
-            $role = Role::namespace($namespace);
-            if ($role instanceof Role) {
-                $role->addPermissions($all);
+            $all = array_keys(self::PERMISSIONS);
+            foreach ([Role::ADMIN, Role::STOREADMIN] as $namespace) {
+                $role = Role::namespace($namespace);
+                if ($role instanceof Role) {
+                    $role->addPermissions($all);
+                }
             }
-        }
 
-        $cashier = Role::namespace(Role::STORECASHIER);
-        if ($cashier instanceof Role) {
-            $administrativePermissionIds = Permission::query()
-                ->where('namespace', 'like', 'golvia.membership.%')
-                ->where('namespace', '!=', 'golvia.membership.pos-summary')
-                ->pluck('id');
+            $cashier = Role::namespace(Role::STORECASHIER);
+            if ($cashier instanceof Role) {
+                $administrativePermissionIds = Permission::query()
+                    ->where('namespace', 'like', 'golvia.membership.%')
+                    ->where('namespace', '!=', 'golvia.membership.pos-summary')
+                    ->pluck('id');
 
-            DB::table('nexopos_role_permission')
-                ->where('role_id', $cashier->id)
-                ->whereIn('permission_id', $administrativePermissionIds)
-                ->delete();
+                DB::table('nexopos_role_permission')
+                    ->where('role_id', $cashier->id)
+                    ->whereIn('permission_id', $administrativePermissionIds)
+                    ->delete();
 
-            $cashier->addPermissions('golvia.membership.pos-summary');
-        }
+                $cashier->addPermissions('golvia.membership.pos-summary');
+            }
+        });
     }
 
     private function tier(
