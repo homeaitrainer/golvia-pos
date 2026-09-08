@@ -497,6 +497,7 @@ class MembershipModuleSchemaTest extends TestCase
             'Models/RetainedRecordBuilder.php',
             'Models/AppendOnlyBuilder.php',
             'Models/RuleVersionBuilder.php',
+            'Models/TierVersionBuilder.php',
             'Models/MembershipAccount.php',
             'Models/MembershipTier.php',
             'Models/CoinTransaction.php',

@@ -32,6 +32,8 @@ class MembershipRuleVersion extends Model
         'redemption_coins' => 'integer',
         'redemption_value' => 'decimal:2',
         'effective_at' => 'datetime',
+        'recalculation_last_account_id' => 'integer',
+        'recalculation_processed_accounts' => 'integer',
     ];
 
     protected static function booted(): void
