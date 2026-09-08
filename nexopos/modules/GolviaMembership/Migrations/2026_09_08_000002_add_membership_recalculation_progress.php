@@ -18,10 +18,20 @@ return new class extends Migration
                 $table->unsignedBigInteger('recalculation_processed_accounts')->default(0);
             });
         }
+        if (! Schema::hasColumn('golvia_membership_accounts', 'tier_evaluated_at')) {
+            Schema::table('golvia_membership_accounts', function (Blueprint $table): void {
+                $table->timestamp('tier_evaluated_at')->nullable();
+            });
+        }
     }
 
     public function down(): void
     {
+        if (Schema::hasColumn('golvia_membership_accounts', 'tier_evaluated_at')) {
+            Schema::table('golvia_membership_accounts', function (Blueprint $table): void {
+                $table->dropColumn('tier_evaluated_at');
+            });
+        }
         if (Schema::hasColumn('golvia_membership_rule_versions', 'recalculation_last_account_id')) {
             Schema::table('golvia_membership_rule_versions', function (Blueprint $table): void {
                 $table->dropColumn('recalculation_last_account_id');

@@ -70,6 +70,8 @@ trait InteractsWithMembershipRules
             'Services/TierResolver.php',
             'Services/MembershipSettingsService.php',
             'Services/TierManagementService.php',
+            'Jobs/RecalculateMembershipTierChunk.php',
+            'Console/Commands/RecalculateMembershipTiers.php',
             'Http/Requests/UpdateMembershipSettingsRequest.php',
             'Http/Requests/UpdateTierRequest.php',
             'Http/Controllers/MembershipSettingsController.php',
@@ -140,7 +142,18 @@ trait InteractsWithMembershipRules
 
     protected function tearDownMembershipRules(): void
     {
-        if (Schema::hasColumn('golvia_membership_rule_versions', 'recalculation_last_account_id')) {
+        if (Schema::hasTable('nexopos_roles')) {
+            $roleIds = DB::table('nexopos_roles')->where('namespace', 'like', 'golvia.test.%')->pluck('id');
+            DB::table('nexopos_users_roles_relations')->whereIn('role_id', $roleIds)->delete();
+            DB::table('nexopos_role_permission')->whereIn('role_id', $roleIds)->delete();
+            DB::table('nexopos_roles')->whereIn('id', $roleIds)->delete();
+        }
+        if (Schema::hasTable('nexopos_users')) {
+            DB::table('nexopos_users')->where('email', 'like', '%@golvia.test')->delete();
+        }
+        if (Schema::hasColumn('golvia_membership_rule_versions', 'recalculation_last_account_id')
+            || Schema::hasColumn('golvia_membership_rule_versions', 'recalculation_processed_accounts')
+            || Schema::hasColumn('golvia_membership_accounts', 'tier_evaluated_at')) {
             (require base_path(self::RULES_MIGRATION))->down();
         }
         if (Schema::hasTable('golvia_membership_rule_versions')) {

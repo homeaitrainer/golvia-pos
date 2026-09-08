@@ -14,6 +14,7 @@ class TierVersionBuilder extends RetainedRecordBuilder
         'maximum_lifetime_coins',
         'discount_percent',
         'display_order',
+        'is_active',
     ];
 
     public function update(array $values)

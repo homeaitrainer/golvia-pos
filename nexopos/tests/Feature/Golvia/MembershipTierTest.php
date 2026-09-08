@@ -4,7 +4,11 @@ namespace Tests\Feature\Golvia;
 
 require_once __DIR__ . '/Concerns/InteractsWithMembershipRules.php';
 
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
+use Modules\GolviaMembership\Console\Commands\RecalculateMembershipTiers;
+use Modules\GolviaMembership\Jobs\RecalculateMembershipTierChunk;
 use Modules\GolviaMembership\Models\MembershipAccount;
 use Modules\GolviaMembership\Models\MembershipRuleVersion;
 use Modules\GolviaMembership\Models\MembershipTier;
@@ -16,7 +20,6 @@ use Tests\TestCase;
 
 class MembershipTierTest extends TestCase
 {
-    use DatabaseTransactions;
     use InteractsWithMembershipRules;
 
     protected function setUp(): void
@@ -27,6 +30,7 @@ class MembershipTierTest extends TestCase
 
     protected function tearDown(): void
     {
+        Carbon::setTestNow();
         $this->tearDownMembershipRules();
         parent::tearDown();
     }
@@ -82,8 +86,45 @@ class MembershipTierTest extends TestCase
         app(TierManagementService::class)->createDraft($invalid, 1);
     }
 
-    public function test_activation_and_recalculation_are_resumable_chunked_and_primary_key_ordered(): void
+    public function test_activation_records_actor_effective_time_and_audit_then_dispatches_after_commit(): void
     {
+        Bus::fake();
+        $user = $this->authenticateWithPermission('golvia.membership.manage-tiers');
+        $active = MembershipRuleVersion::query()->where('activation_state', 'active')->sole();
+        $draftId = $this->patchJson('/api/golvia-membership/tiers', ['tiers' => $this->compactTiers()])
+            ->assertCreated()
+            ->json('data.id');
+        $draftCreatedAt = MembershipRuleVersion::query()->findOrFail($draftId)->effective_at;
+        $activationTime = Carbon::parse('2026-09-08 10:15:30', 'Asia/Kuala_Lumpur');
+        Carbon::setTestNow($activationTime);
+
+        $this->postJson("/api/golvia-membership/tier-versions/{$draftId}/activate")
+            ->assertOk()
+            ->assertJsonPath('data.recalculation_state', 'pending');
+
+        $activated = MembershipRuleVersion::query()->findOrFail($draftId);
+        $this->assertSame($user->id, $activated->actor_id);
+        $this->assertTrue($activated->effective_at->equalTo($activationTime));
+        $this->assertFalse($activated->effective_at->equalTo($draftCreatedAt));
+        $audit = SettingsAudit::query()->where('rule_version_id', $draftId)->latest('id')->firstOrFail();
+        $this->assertSame($user->id, $audit->actor_id);
+        $this->assertSame('draft', $audit->old_values['activation_state']);
+        $this->assertSame('active', $audit->new_values['activation_state']);
+        $this->assertSame($active->id, $audit->new_values['previous_active_rule_version_id']);
+        $this->assertTrue($audit->effective_at->equalTo($activationTime));
+        Bus::assertDispatched(RecalculateMembershipTierChunk::class, fn ($job) => $job->ruleVersionId === $draftId);
+        try {
+            $activated->update(['activation_state' => MembershipRuleVersion::STATE_RETIRED]);
+            $this->fail('Activation state must only change through the domain transition methods.');
+        } catch (\LogicException) {
+            $this->assertTrue(true);
+        }
+        Carbon::setTestNow();
+    }
+
+    public function test_job_processes_one_bounded_chunk_and_resumes_in_primary_key_order(): void
+    {
+        Bus::fake();
         $this->authenticateWithPermission('golvia.membership.manage-tiers');
         $active = MembershipRuleVersion::query()->where('activation_state', 'active')->sole();
         $white = MembershipTier::query()->where('rule_version_id', $active->id)->where('key', 'white')->sole();
@@ -97,6 +138,7 @@ class MembershipTierTest extends TestCase
                 'available_coin_balance' => $coins,
                 'lifetime_earned_coins' => $coins,
                 'current_tier_id' => $white->id,
+                'tier_evaluated_at' => null,
                 'joined_at' => now(),
             ]));
         }
@@ -113,39 +155,84 @@ class MembershipTierTest extends TestCase
         } catch (\LogicException) {
             $this->assertTrue(true);
         }
+        foreach ([
+            fn () => $draftTier->update(['is_active' => false]),
+            fn () => MembershipTier::query()->whereKey($draftTier->id)->update(['is_active' => false]),
+        ] as $mutation) {
+            try {
+                $mutation();
+                $this->fail('A versioned tier active flag must be immutable.');
+            } catch (\LogicException) {
+                $this->assertTrue(true);
+            }
+        }
 
         $this->postJson("/api/golvia-membership/tier-versions/{$draftId}/activate")
             ->assertOk()
             ->assertJsonPath('data.recalculation_state', 'pending');
         $this->assertSame('retired', $active->fresh()->activation_state);
 
-        $first = $this->postJson("/api/golvia-membership/tier-versions/{$draftId}/recalculate", ['chunk_size' => 2])
-            ->assertOk();
-        $first->assertJsonPath('data.recalculation_state', 'running');
-        $first->assertJsonPath('data.recalculation_last_account_id', 20);
-        $first->assertJsonPath('data.recalculation_processed_accounts', 2);
+        $job = new RecalculateMembershipTierChunk($draftId, 2);
+        $job->handle(app(TierManagementService::class));
+        $first = MembershipRuleVersion::query()->findOrFail($draftId);
+        $this->assertSame('running', $first->recalculation_state);
+        $this->assertSame(20, $first->recalculation_last_account_id);
+        $this->assertSame(2, $first->recalculation_processed_accounts);
         $this->assertNotSame($white->id, MembershipAccount::query()->findOrFail(20)->current_tier_id);
+        $this->assertNotNull(MembershipAccount::query()->findOrFail(20)->tier_evaluated_at);
         $this->assertSame($white->id, MembershipAccount::query()->findOrFail(30)->current_tier_id);
+        $this->assertNull(MembershipAccount::query()->findOrFail(30)->tier_evaluated_at);
 
-        $this->postJson("/api/golvia-membership/tier-versions/{$draftId}/recalculate", ['chunk_size' => 2])
-            ->assertOk()
-            ->assertJsonPath('data.recalculation_last_account_id', 40)
-            ->assertJsonPath('data.recalculation_processed_accounts', 4);
+        $job->handle(app(TierManagementService::class));
+        $second = MembershipRuleVersion::query()->findOrFail($draftId);
+        $this->assertSame(40, $second->recalculation_last_account_id);
+        $this->assertSame(4, $second->recalculation_processed_accounts);
 
-        $final = $this->postJson("/api/golvia-membership/tier-versions/{$draftId}/recalculate", ['chunk_size' => 2])
-            ->assertOk();
-        $final->assertJsonPath('data.recalculation_state', 'completed');
-        $final->assertJsonPath('data.recalculation_last_account_id', 50);
-        $final->assertJsonPath('data.recalculation_processed_accounts', 5);
+        $job->handle(app(TierManagementService::class));
+        $final = MembershipRuleVersion::query()->findOrFail($draftId);
+        $this->assertSame('completed', $final->recalculation_state);
+        $this->assertSame(50, $final->recalculation_last_account_id);
+        $this->assertSame(5, $final->recalculation_processed_accounts);
 
-        $replay = $this->postJson("/api/golvia-membership/tier-versions/{$draftId}/recalculate", ['chunk_size' => 2])
-            ->assertOk();
-        $replay->assertJsonPath('data.recalculation_processed_accounts', 5);
+        $job->handle(app(TierManagementService::class));
+        $this->assertSame(5, MembershipRuleVersion::query()->findOrFail($draftId)->recalculation_processed_accounts);
 
         $expected = [10 => 'white', 20 => 'silver', 30 => 'gold', 40 => 'platinum', 50 => 'platinum'];
         foreach ($expected as $id => $key) {
             $tierId = MembershipAccount::query()->findOrFail($id)->current_tier_id;
             $this->assertSame($key, MembershipTier::query()->findOrFail($tierId)->key);
+        }
+    }
+
+    public function test_command_fallback_processes_pending_versions_and_terminal_failure_is_visible(): void
+    {
+        Bus::fake();
+        $this->authenticateWithPermission('golvia.membership.manage-tiers');
+        $draft = app(TierManagementService::class)->createDraft($this->compactTiers(), 1);
+        app(TierManagementService::class)->activate($draft, 1);
+
+        $kernel = $this->app->make(\Illuminate\Contracts\Console\Kernel::class);
+        $kernel->registerCommand(new RecalculateMembershipTiers(app(TierManagementService::class)));
+        $this->artisan('golvia:membership-recalculate-tiers', ['--chunk' => 2])->assertSuccessful();
+        $this->assertSame('completed', $draft->fresh()->recalculation_state);
+
+        $draft2 = app(TierManagementService::class)->createDraft($this->defaultTiers(), 1);
+        app(TierManagementService::class)->activate($draft2, 1);
+        (new RecalculateMembershipTierChunk($draft2->id, 100))->failed(new \RuntimeException('terminal'));
+        $this->assertSame('failed', $draft2->fresh()->recalculation_state);
+    }
+
+    public function test_service_rejects_invalid_chunk_sizes(): void
+    {
+        $version = MembershipRuleVersion::query()->where('activation_state', 'active')->sole();
+
+        foreach ([0, 501] as $chunkSize) {
+            try {
+                app(TierManagementService::class)->recalculateChunk($version, $chunkSize);
+                $this->fail('Invalid chunk sizes must be rejected at the service boundary.');
+            } catch (\InvalidArgumentException) {
+                $this->assertTrue(true);
+            }
         }
     }
 

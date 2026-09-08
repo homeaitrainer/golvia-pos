@@ -25,9 +25,11 @@ class TierController extends Controller
         return response()->json(['data' => $this->settings->serialize($version)], 201);
     }
 
-    public function activate(MembershipRuleVersion $version): JsonResponse
+    public function activate(Request $request, MembershipRuleVersion $version): JsonResponse
     {
-        return response()->json(['data' => $this->settings->serialize($this->tiers->activate($version))]);
+        return response()->json([
+            'data' => $this->settings->serialize($this->tiers->activate($version, (int) $request->user()->id)),
+        ]);
     }
 
     public function recalculate(Request $request, MembershipRuleVersion $version): JsonResponse

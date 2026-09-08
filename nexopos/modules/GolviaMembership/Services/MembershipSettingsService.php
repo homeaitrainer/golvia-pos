@@ -63,7 +63,7 @@ class MembershipSettingsService
             ]);
 
             $this->copyTiers($current, $version);
-            $current->update(['activation_state' => MembershipRuleVersion::STATE_RETIRED]);
+            $current->retireByDomain();
             SettingsAudit::query()->create([
                 'rule_version_id' => $version->id,
                 'old_values' => $oldValues,

@@ -21,6 +21,7 @@ class MembershipAccount extends Model
         'available_coin_balance' => 'integer',
         'lifetime_earned_coins' => 'integer',
         'joined_at' => 'datetime',
+        'tier_evaluated_at' => 'datetime',
     ];
 
     protected static function booted(): void

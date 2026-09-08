@@ -8,6 +8,7 @@ use Modules\GolviaMembership\Models\MembershipAccount;
 use Modules\GolviaMembership\Models\MembershipRuleVersion;
 use Modules\GolviaMembership\Models\MembershipTier;
 use Modules\GolviaMembership\Models\SettingsAudit;
+use Modules\GolviaMembership\Jobs\RecalculateMembershipTierChunk;
 use RuntimeException;
 
 class TierManagementService
@@ -61,9 +62,9 @@ class TierManagementService
         });
     }
 
-    public function activate(MembershipRuleVersion $version): MembershipRuleVersion
+    public function activate(MembershipRuleVersion $version, int $actorId): MembershipRuleVersion
     {
-        return DB::transaction(function () use ($version): MembershipRuleVersion {
+        return DB::transaction(function () use ($version, $actorId): MembershipRuleVersion {
             $locked = MembershipRuleVersion::query()->lockForUpdate()->findOrFail($version->id);
             if ($locked->activation_state === MembershipRuleVersion::STATE_ACTIVE) {
                 return $locked;
@@ -72,15 +73,35 @@ class TierManagementService
                 throw new RuntimeException('Only a draft tier version can be activated.');
             }
 
-            MembershipRuleVersion::query()
+            $previousActive = MembershipRuleVersion::query()
                 ->where('activation_state', MembershipRuleVersion::STATE_ACTIVE)
-                ->update(['activation_state' => MembershipRuleVersion::STATE_RETIRED]);
-            $locked->update([
-                'activation_state' => MembershipRuleVersion::STATE_ACTIVE,
-                'recalculation_state' => MembershipRuleVersion::RECALCULATION_PENDING,
-                'recalculation_last_account_id' => 0,
-                'recalculation_processed_accounts' => 0,
+                ->lockForUpdate()
+                ->first();
+            if ($previousActive instanceof MembershipRuleVersion) {
+                $previousActive->retireByDomain();
+            }
+
+            $activationTime = now();
+            $oldState = [
+                'activation_state' => $locked->activation_state,
+                'actor_id' => $locked->actor_id,
+                'effective_at' => $locked->effective_at?->toISOString(),
+            ];
+            $locked->activateBy($actorId, $activationTime);
+            SettingsAudit::query()->create([
+                'rule_version_id' => $locked->id,
+                'old_values' => $oldState,
+                'new_values' => [
+                    'activation_state' => MembershipRuleVersion::STATE_ACTIVE,
+                    'actor_id' => $actorId,
+                    'effective_at' => $activationTime->toISOString(),
+                    'previous_active_rule_version_id' => $previousActive?->id,
+                ],
+                'actor_id' => $actorId,
+                'effective_at' => $activationTime,
             ]);
+
+            DB::afterCommit(fn () => RecalculateMembershipTierChunk::dispatch($locked->id, 100));
 
             return $locked->fresh();
         });
@@ -88,6 +109,10 @@ class TierManagementService
 
     public function recalculateChunk(MembershipRuleVersion $version, int $chunkSize): MembershipRuleVersion
     {
+        if ($chunkSize < 1 || $chunkSize > 500) {
+            throw new \InvalidArgumentException('Tier recalculation chunk size must be between 1 and 500.');
+        }
+
         return DB::transaction(function () use ($version, $chunkSize): MembershipRuleVersion {
             $locked = MembershipRuleVersion::query()->lockForUpdate()->findOrFail($version->id);
             if ($locked->activation_state !== MembershipRuleVersion::STATE_ACTIVE) {
@@ -105,9 +130,10 @@ class TierManagementService
                 ->get();
 
             foreach ($accounts as $account) {
-                $account->update([
+                $account->forceFill([
                     'current_tier_id' => $this->resolver->resolve($account->lifetime_earned_coins, $locked)->id,
-                ]);
+                    'tier_evaluated_at' => now(),
+                ])->save();
             }
 
             $lastId = $accounts->isEmpty()
@@ -123,6 +149,18 @@ class TierManagementService
             ]);
 
             return $locked->fresh();
+        });
+    }
+
+    public function markRecalculationFailed(int $ruleVersionId): MembershipRuleVersion
+    {
+        return DB::transaction(function () use ($ruleVersionId): MembershipRuleVersion {
+            $version = MembershipRuleVersion::query()->lockForUpdate()->findOrFail($ruleVersionId);
+            if ($version->recalculation_state !== MembershipRuleVersion::RECALCULATION_COMPLETED) {
+                $version->update(['recalculation_state' => MembershipRuleVersion::RECALCULATION_FAILED]);
+            }
+
+            return $version->fresh();
         });
     }
 

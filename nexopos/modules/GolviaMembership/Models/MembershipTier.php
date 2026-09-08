@@ -30,6 +30,7 @@ class MembershipTier extends Model
                 'maximum_lifetime_coins',
                 'discount_percent',
                 'display_order',
+                'is_active',
             ])) {
                 throw new LogicException('Versioned membership tier values are immutable.');
             }
